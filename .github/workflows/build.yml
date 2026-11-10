@@ -1,0 +1,137 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    env:
+      # Every build is signed with the same Developer ID, pinned to this team, and notarized.
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    outputs:
+      dist_name: ${{ steps.version.outputs.dist_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            dist_name="Havbunn-${version}"
+          else
+            version=""
+            dist_name="Havbunn-${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dist_name=$dist_name" >> "$GITHUB_OUTPUT"
+
+      - name: Require signing secrets
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          missing=""
+          for name in CERT_P12_BASE64 CERT_PASSWORD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing signing secrets:$missing. See README, Downloads." >&2
+            exit 1
+          fi
+
+      - name: Import Developer ID certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          # Keep the existing keychains searchable; splitting the list into arguments is intended.
+          existing="$(security list-keychains -d user | tr -d '"' | xargs)"
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$keychain" $existing
+          identity="$(security find-identity -v -p codesigning "$keychain" | grep 'Developer ID Application' | grep "($APPLE_TEAM_ID)" | head -1 | sed -E 's/.*"(.*)"/\1/')"
+          if [ -z "$identity" ]; then echo "::error::No Developer ID Application identity for team $APPLE_TEAM_ID in the certificate" >&2; exit 1; fi
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "CODESIGN_FLAGS=--options runtime --timestamp" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          make dist \
+            VERSION="${{ steps.version.outputs.version }}" \
+            BUILD_NUMBER="$GITHUB_RUN_NUMBER" \
+            DIST_NAME="${{ steps.version.outputs.dist_name }}" \
+            SIGN_IDENTITY="$SIGN_IDENTITY"
+          codesign --verify --deep --strict --verbose=2 build/Havbunn.saver
+          lipo -archs build/Havbunn.saver/Contents/MacOS/Havbunn
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          DIST_NAME: ${{ steps.version.outputs.dist_name }}
+        run: |
+          xcrun notarytool submit "build/$DIST_NAME.zip" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple build/Havbunn.saver
+          # Re-zip so the download carries the stapled ticket.
+          rm "build/$DIST_NAME.zip"
+          ditto -c -k --keepParent build/Havbunn.saver "build/$DIST_NAME.zip"
+
+      - name: Verify release signature
+        env:
+          DIST_NAME: ${{ steps.version.outputs.dist_name }}
+        run: |
+          # Check what users download: unpack the final zip and inspect that bundle.
+          check="$RUNNER_TEMP/check"
+          rm -rf "$check" && mkdir -p "$check"
+          ditto -x -k "build/$DIST_NAME.zip" "$check"
+          bundle="$check/Havbunn.saver"
+          codesign --verify --deep --strict "$bundle"
+          info="$(codesign -dv --verbose=4 "$bundle" 2>&1)"
+          echo "$info" | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
+          echo "$info" | grep -q '^Authority=Developer ID Application' || { echo "::error::Not signed with a Developer ID" >&2; exit 1; }
+          echo "$info" | grep -qx "TeamIdentifier=$APPLE_TEAM_ID" || { echo "::error::Signed by another team" >&2; exit 1; }
+          echo "$info" | grep -q '^Timestamp=' || { echo "::error::No secure timestamp" >&2; exit 1; }
+          xcrun stapler validate "$bundle"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.dist_name }}
+          path: build/${{ steps.version.outputs.dist_name }}.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.dist_name }}
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIST_NAME: ${{ needs.build.outputs.dist_name }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$DIST_NAME.zip" \
+            --repo "$GITHUB_REPOSITORY" --title "Havbunn ${GITHUB_REF_NAME#v}" --generate-notes
