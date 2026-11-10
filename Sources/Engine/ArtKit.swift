@@ -2,6 +2,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 import Metal
+import Synchronization
 
 typealias XY = (Double, Double)
 typealias C3 = SIMD3<Float>
@@ -305,17 +306,19 @@ final class Atlas {
     let texture: MTLTexture
     private(set) var frames: [String: AtlasFrame] = [:]
 
-    private static let lock = NSLock()
-    private static weak var cached: Atlas?
+    private struct Cache { weak var atlas: Atlas? }
+    private static let cache = Mutex(Cache())
 
     let english: Bool
 
     static func shared(device: MTLDevice, english: Bool) -> Atlas {
-        lock.lock(); defer { lock.unlock() }
-        if let a = cached, a.texture.device === device, a.english == english { return a }
-        let a = Atlas(device: device, english: english)
-        cached = a
-        return a
+        // Built under the lock, so displays starting together share one atlas.
+        cache.withLock { c in
+            if let a = c.atlas, a.texture.device === device, a.english == english { return a }
+            let a = Atlas(device: device, english: english)
+            c.atlas = a
+            return a
+        }
     }
 
     func frame(_ name: String) -> AtlasFrame {

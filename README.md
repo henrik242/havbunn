@@ -6,7 +6,7 @@ generates a new seabed.
 
 ## Build and install
 
-Needs Xcode. No other dependencies.
+Needs Xcode and macOS 27 on Apple Silicon. No other dependencies.
 
     make install      # build and copy to ~/Library/Screen Savers
     make uninstall
@@ -23,7 +23,7 @@ build with `SIGN_IDENTITY="Developer ID Application: ..."` and notarize.
 
 ## Downloads
 
-Every push builds a universal `Havbunn.saver`, attached to its GitHub Actions run as an
+Every push builds `Havbunn.saver` for Apple Silicon Macs on macOS 27 or later, attached to its GitHub Actions run as an
 artifact. Pushing a tag like `v1.2.3` also publishes a GitHub release with the zip.
 
 Unzip, then double-click `Havbunn.saver` or copy it to `~/Library/Screen Savers`.

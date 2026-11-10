@@ -206,25 +206,28 @@ public final class HavbunnView: ScreenSaverView {
         // Captions are unreadable at preview size.
         let names = HavbunnView.captionLanguage != 0 && !isPreview
         let english = HavbunnView.englishNames
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            do {
-                let r = try Renderer(device: device, shaderSource: url, seed: seed)
-                r.showNames = names
-                r.english = english
-                r.prepare(width: w, height: h)
-                DispatchQueue.main.async {
-                    guard let self = self, self.preparing else {
-                        r.tearDown()
-                        return
-                    }
-                    self.renderer = r
-                    self.preparing = false
-                    self.lastTime = 0
+        // Shader compile, atlas and terrain bake take a fraction of a second; keep them off the main thread.
+        Task { [weak self] in
+            let built = await Task.detached(priority: .userInitiated) { () -> Renderer? in
+                do {
+                    let r = try Renderer(device: device, shaderSource: url, seed: seed)
+                    r.showNames = names
+                    r.english = english
+                    r.prepare(width: w, height: h)
+                    return r
+                } catch {
+                    saverLog.error("renderer setup failed: \(String(describing: error), privacy: .public)")
+                    return nil
                 }
-            } catch {
-                saverLog.error("renderer setup failed: \(String(describing: error), privacy: .public)")
-                DispatchQueue.main.async { self?.preparing = false }
+            }.value
+            guard let self, self.preparing, let built else {
+                built?.tearDown()
+                self?.preparing = false
+                return
             }
+            self.renderer = built
+            self.preparing = false
+            self.lastTime = 0
         }
     }
 

@@ -81,7 +81,7 @@ jobs:
             DIST_NAME="${{ steps.version.outputs.dist_name }}" \
             SIGN_IDENTITY="$SIGN_IDENTITY"
           codesign --verify --deep --strict --verbose=2 build/Havbunn.saver
-          lipo -archs build/Havbunn.saver/Contents/MacOS/Havbunn
+          test "$(lipo -archs build/Havbunn.saver/Contents/MacOS/Havbunn)" = arm64
 
       - name: Notarize
         env:

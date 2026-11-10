@@ -2,7 +2,8 @@ BUILD := build
 SAVER := $(BUILD)/Havbunn.saver
 CONTENTS := $(SAVER)/Contents
 ENGINE := $(wildcard Sources/Engine/*.swift)
-TARGET := 12.0
+# Apple Silicon only: macOS 26 was the last release for Intel Macs.
+TARGET := 27.0
 SDK := $(shell xcrun --sdk macosx --show-sdk-path)
 SWIFTC := xcrun swiftc -sdk $(SDK) -swift-version 5 -O -whole-module-optimization
 # Ad-hoc by default. Set SIGN_IDENTITY to a Developer ID to distribute; notarization also
@@ -32,10 +33,8 @@ dist: saver
 	ditto -c -k --keepParent $(SAVER) $(BUILD)/$(DIST_NAME).zip
 
 $(CONTENTS)/MacOS/Havbunn: $(ENGINE) Sources/Saver/HavbunnView.swift
-	@mkdir -p $(CONTENTS)/MacOS $(BUILD)/arm64 $(BUILD)/x86_64
-	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name Havbunn -emit-library -Xlinker -bundle -o $(BUILD)/arm64/Havbunn $(ENGINE) Sources/Saver/HavbunnView.swift -framework ScreenSaver
-	$(SWIFTC) -target x86_64-apple-macos$(TARGET) -module-name Havbunn -emit-library -Xlinker -bundle -o $(BUILD)/x86_64/Havbunn $(ENGINE) Sources/Saver/HavbunnView.swift -framework ScreenSaver
-	xcrun lipo -create $(BUILD)/arm64/Havbunn $(BUILD)/x86_64/Havbunn -output $@
+	@mkdir -p $(CONTENTS)/MacOS
+	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name Havbunn -emit-library -Xlinker -bundle -o $@ $(ENGINE) Sources/Saver/HavbunnView.swift -framework ScreenSaver
 
 # Compiled by Metal at load time, so building needs no Metal toolchain.
 $(CONTENTS)/Resources/Shaders.metal: Sources/Shaders/Shaders.metal
