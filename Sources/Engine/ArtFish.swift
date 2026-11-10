@@ -320,39 +320,109 @@ enum FishArt {
         a.eye(905, 146, 17, iris: hex(0xd7cda9))
     }
 
+    /// Norway redfish (Sebastes viviparus): deep orange-red rockfish with a large head and
+    /// high-set eye, a big oblique mouth with a jutting lower jaw, bony head ridges and
+    /// preopercular spines, and one long dorsal fin — serrated spiny front, soft rounded rear.
     static func uer(_ a: Art) {
-        let finC = hex(0xb33a24), finD = hex(0xe5734d)
-        a.fin(base: [(96, 240), (70, 270), (96, 300)], edge: [(0, 165), (10, 270), (0, 375)], root: finC, tip: finD, rays: 14)
-        var spiny: [XY] = [], base: [XY] = []
-        for i in 0...12 {
-            let t = Double(i) / 12
-            base.append((300 + t * 330, 112 - 56 * sin(t * 2.4) + 2))
-            spiny.append((295 + t * 330, (i % 2 == 0 ? 8 : 34) + 22 * abs(t - 0.5)))
-        }
-        a.fin(base: [(140, 196), (290, 128)], edge: [(145, 148), (210, 66), (290, 62)], root: finC, tip: finD, rays: 9)
-        a.fill(base + spiny.reversed(), finC, 0.9, raw: true)
-        for i in 0...12 { a.line([base[i], spiny[i]], hex(0xf1c7a0), 0.9, 3.4, smooth: false) }
-        a.fin(base: [(200, 362), (330, 402)], edge: [(205, 420), (270, 475), (340, 462)], root: finC, tip: finD, rays: 9)
+        let finC = hex(0x9c3a24), finD = hex(0xc5633f)
+        let membrane = hex(0x8a3420), spineCol = hex(0xe3bd97)
 
         let top: [XY] = [(90, 238), (170, 190), (300, 118), (470, 62), (620, 56), (780, 94), (880, 170), (960, 268)]
         let bottom: [XY] = [(90, 302), (170, 330), (300, 388), (470, 438), (620, 448), (780, 428), (880, 370), (960, 300)]
-        let back = hex(0xb23a22), side = hex(0xe05a35), belly = hex(0xf7c3a6)
+        let topCurve = Curve(top)
+        func topY(_ x: Double) -> Double { topCurve.value(x) }
+
+        // Rounded caudal fin.
+        a.fin(base: [(96, 240), (70, 268), (96, 300)], edge: [(4, 178), (0, 270), (4, 362)], root: finC, tip: finD, rays: 13)
+        // Pelvic/anal fins on the near side, low and forward.
+        a.fin(base: [(200, 362), (330, 402)], edge: [(205, 420), (270, 475), (340, 462)], root: finC, tip: finD, rays: 9)
+
+        // ---- Long dorsal fin, head to the right: soft rounded rear (tail side) then serrated
+        // spiny front (head side), sitting on the back ridge. ----
+        let xTail = 252.0, xMid = 478.0, xHead = 742.0
+        var dBase: [XY] = [], dEdge: [XY] = []
+        // Soft rounded rear lobe, tail (left) toward the junction.
+        let nSo = 9
+        func softLift(_ t: Double) -> Double { 2 + 36 * sin(min(1, t) * Double.pi * 0.55) }
+        for i in 0...nSo {
+            let t = Double(i) / Double(nSo)
+            let x = xTail + (xMid - xTail) * t
+            dBase.append((x, topY(x)))
+            dEdge.append((x, topY(x) - softLift(t)))
+        }
+        // Spiny front lobe, junction toward the head (right).
+        let nSp = 12
+        func spineLen(_ t: Double) -> Double { 38 - 8 * t }
+        for i in 0...nSp {
+            let t = Double(i) / Double(nSp)
+            let x = xMid + (xHead - xMid) * t
+            dBase.append((x, topY(x)))
+            if i > 0 {
+                let xn = x - (xHead - xMid) / Double(nSp) * 0.5
+                dEdge.append((xn, topY(xn) - spineLen(t) * 0.66))
+            }
+            dEdge.append((x, topY(x) - spineLen(t)))
+        }
+        a.fill(dBase + dEdge.reversed(), membrane, 0.95, raw: true)
+        // Dusky wash darkening the spiny membrane near the head.
+        a.fill([(xMid, topY(xMid)), (560, topY(560) - 24), (660, topY(660) - 26),
+                (xHead, topY(xHead) - 18), (xHead, topY(xHead))], hex(0x5e2414), 0.2, raw: true)
+        // Stiff spines in the front lobe.
+        for i in 0...nSp {
+            let t = Double(i) / Double(nSp)
+            let x = xMid + (xHead - xMid) * t
+            a.line([(x, topY(x) + 2), (x, topY(x) - spineLen(t))], spineCol, 0.7, 2.3, smooth: false)
+        }
+        // Soft curved rays in the rear lobe.
+        for i in 1...nSo {
+            let t = Double(i) / Double(nSo)
+            let x = xTail + (xMid - xTail) * t
+            a.line([(x, topY(x) + 2), (x, topY(x) - softLift(t) + 2)], spineCol * 0.9, 0.4, 1.6, smooth: false)
+        }
+
+        let back = hex(0x9a3a22), side = hex(0xc4572f), belly = hex(0xe8bea2)
         a.body(top: top, bottom: bottom) { _, v, x, y in
-            var c = flank(v, back: back, side: side, belly: belly, split: 0.52)
-            let m = smooth(0.48, 0.68, artNoise.fbm(x * 0.018, y * 0.022 + 4, 3)) * (1 - smooth(0.5, 0.78, v))
-            c = mix(c, hex(0x651a12), m * 0.65)
-            c *= 1 - scales(x, y, size: 20) * 0.13
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.5)
+            // Subtle dusky mottling, kept brownish and low-contrast.
+            let m = smooth(0.55, 0.80, artNoise.fbm(x * 0.02, y * 0.026 + 4, 3)) * (1 - smooth(0.52, 0.86, v))
+            c = mix(c, hex(0x6a2c1a), m * 0.42)
+            // Faint broad saddles over the back.
+            let barPhase = sin(x * 0.0146 + (artNoise.fbm(x * 0.012, y * 0.012, 2) - 0.5) * 2.4)
+            let bars = smooth(0.45, 0.98, barPhase) * (1 - smooth(0.40, 0.70, v))
+            c = mix(c, hex(0x5a2616), bars * 0.3)
+            // Faint high lateral line following the back.
+            let ll = clamp01(1 - abs(v - 0.33) * 40)
+            c = mix(c, hex(0xf0c9a8), ll * 0.16)
+            c *= 1 - scales(x, y, size: 20) * 0.10
             return rgba(c * roundLight(v))
         }
-        a.fin(base: [(650, 270), (650, 345)], edge: [(530, 270), (490, 340), (545, 410)], root: finC, tip: finD, rays: 12)
+
+        // Rounded pectoral fin just behind the gill cover.
+        a.fin(base: [(700, 262), (710, 328)], edge: [(620, 296), (598, 356), (652, 404)], root: finC, tip: finD, rays: 13)
+        // Rear anal fin.
         a.fin(base: [(640, 412), (700, 412)], edge: [(590, 470), (640, 495), (700, 455)], root: finC, tip: finD, rays: 6)
-        gill(a, 738, 150, 390, bow: 44, 0.42)
+
+        gill(a, 738, 150, 390, bow: 44, 0.4)
+        // Dusky opercular blotch, typical of the species.
+        a.softDot(762, 256, 70, hex(0x5a2414), 0.26, sy: 1.15)
+        // Bony cheek ridges radiating back from under the eye.
         for i in 0..<4 {
             let dx = Double(i) * 18
-            a.line([(748 - dx, 212 + dx), (722 - dx, 200 + dx)], hex(0x54160e), 0.7, 5)
+            a.line([(748 - dx, 214 + dx), (720 - dx, 202 + dx)], hex(0x54160e), 0.6, 4.5)
         }
-        a.line([(960, 288), (895, 316), (838, 306)], hex(0x4a130c), 0.9, 6)
-        a.eye(840, 196, 38, iris: hex(0xe8b34e))
+        a.line([(806, 232), (770, 250)], hex(0x6e2416), 0.45, 3)
+        // Preopercular spines pointing back along the gill-cover margin, above the pectoral.
+        for i in 0..<3 {
+            let yy = 206.0 + Double(i) * 26
+            a.fill([(736, yy), (710, yy + 6), (736, yy + 14)], finD, 0.85, raw: true)
+            a.line([(736, yy + 7), (712, yy + 6)], hex(0xe9c3a0), 0.5, 1.6, smooth: false)
+        }
+        // Big oblique mouth with the lower jaw jutting ahead.
+        a.fill([(958, 286), (882, 316), (892, 332), (968, 302)], hex(0x3a0f08), 0.95, raw: true)
+        a.line([(958, 286), (912, 302), (880, 316)], hex(0x4a130c), 0.95, 6)
+        a.line([(968, 302), (914, 324), (884, 322)], hex(0x5a1a10), 0.95, 5)
+        a.line([(968, 303), (916, 322)], hex(0xe4b596), 0.5, 2.5)
+        a.eye(838, 190, 42, iris: hex(0xe3ad48))
     }
 
     private static func wrasseBody(_ a: Art, shader: @escaping (Float, Float, Float, Float) -> RGBA, finC: C3, finD: C3) {
@@ -366,76 +436,154 @@ enum FishArt {
     }
 
     static func berggylt(_ a: Art) {
-        let back = hex(0x4c6a3a), side = hex(0x88955a), belly = hex(0xe1cf9a)
+        let back = hex(0x46602f), side = hex(0x7e8a4e), belly = hex(0xd6c48c)
+        let rust = hex(0x8a5226), paleG = hex(0xb4bd7c), cream = hex(0xe2d9a6)
         wrasseBody(a, shader: { _, v, x, y in
             var c = flank(v, back: back, side: side, belly: belly, split: 0.50)
-            let m = smooth(0.47, 0.66, artNoise.fbm(x * 0.016, y * 0.022, 3))
-            c = mix(c, hex(0x8a4e23), m * 0.55)
-            let dots = spots(x, y, cell: 22, radius: 6.5, keep: 0.8)
-            c = mix(c, hex(0xe8e0ac), dots * 0.78)
-            c *= 1 - scales(x, y, size: 26) * 0.17
+            // Broad reddish-brown blotching over the green back, coarse then finer.
+            let big = smooth(0.46, 0.70, artNoise.fbm(x * 0.013, y * 0.018, 3))
+            c = mix(c, rust, big * 0.50 * (1 - smooth(0.74, 0.96, v)))
+            let fine = smooth(0.52, 0.72, artNoise.fbm(x * 0.05 + 7, y * 0.06, 3))
+            c = mix(c, c * 0.80, fine * 0.32)
+            // Reticulation: a dark net between scales with a pale spot at each scale centre.
+            c = mix(c, c * 0.72, scales(x, y, size: 25) * 0.26)
+            let spotCol = mix(paleG, cream, artNoise.fbm(x * 0.03, y * 0.03 + 3, 2))
+            let dens = 0.35 + 0.55 * artNoise.fbm(x * 0.02 + 1, y * 0.02, 2)
+            let net = spots(x, y, cell: 25, radius: 3.5, keep: 0.72) * dens
+            c = mix(c, spotCol, net * (1 - smooth(0.80, 0.98, v)) * 0.82)
             return rgba(c * roundLight(v))
-        }, finC: hex(0x516a3e), finD: hex(0x90905a))
+        }, finC: hex(0x4c6236), finD: hex(0x868950))
         a.fin(base: [(705, 256), (705, 320)], edge: [(590, 262), (560, 310), (605, 372)], root: hex(0x7c7c4c), tip: hex(0xb4a668), rays: 10)
         gill(a, 792, 140, 372, bow: 40)
-        a.taper([(980, 256), (952, 276), (905, 286)], 28, 16, hex(0xb88e62))
-        a.line([(978, 262), (940, 271), (900, 282)], hex(0x2a1e10), 0.95, 4)
+        // Big fleshy lips, the wrasse's most obvious feature.
+        a.taper([(987, 259), (969, 263), (948, 267)], 20, 11, hex(0xbf9570))
+        a.taper([(986, 281), (967, 282), (946, 283)], 16, 10, hex(0xb5885f))
+        a.softDot(983, 271, 15, hex(0xc9a074), 0.5)
+        a.line([(986, 271), (951, 275), (919, 279)], hex(0x241a10), 0.85, 3.2)
         a.eye(872, 188, 22, iris: hex(0xd29545))
     }
 
     static func blaastaal(_ a: Art) {
-        let orange = hex(0xcf7a2c), deep = hex(0xa95520), blue = hex(0x2a62a0), bright = hex(0x3f9bd4)
+        // Breeding male: muted steel/periwinkle blue head and back over warm, restrained orange.
+        let orange = hex(0xc0772f), deep = hex(0x9c4c22), blue = hex(0x516890), bright = hex(0x8294bc)
+        let lineBlue = hex(0x93a4c9)
         wrasseBody(a, shader: { t, v, x, y in
-            var c = v < 0.6 ? mix(deep, orange, smooth(0, 0.45, v)) : mix(orange, hex(0xf6c15a), smooth(0.6, 1, v))
-            // Blue head and back streaks, typical of the breeding male.
+            var c = v < 0.6 ? mix(deep, orange, smooth(0, 0.45, v)) : mix(orange, hex(0xe6bb6a), smooth(0.6, 1, v))
             let wav = artNoise.fbm(x * 0.012, y * 0.02, 2) * 0.08
-            let head = smooth(0.62, 0.82, t + wav * 2)
-            let backline = clamp01(1 - abs(v - 0.20 - wav) * 16) * smooth(0.10, 0.28, t)
-            let midline = clamp01(1 - abs(v - 0.54 + wav) * 22) * smooth(0.20, 0.45, t)
-            c = mix(c, blue, max(head * 0.96, max(backline, midline) * 0.95))
-            let glow = clamp01(1 - abs(v - 0.20 - wav) * 34) * smooth(0.10, 0.28, t)
-            c = mix(c, bright, glow * 0.8)
+            // Blue head and spreading back wash, typical of the breeding male.
+            let head = smooth(0.60, 0.84, t + wav * 2)
+            c = mix(c, blue, head * 0.95)
+            // Wavy blue lines running the length of the flank.
+            let backline = clamp01(1 - abs(v - 0.19 - wav) * 15) * smooth(0.08, 0.26, t)
+            let midline = clamp01(1 - abs(v - 0.52 + wav) * 20) * smooth(0.18, 0.42, t)
+            let lowline = clamp01(1 - abs(v - 0.80 + wav * 0.7) * 22) * smooth(0.14, 0.40, t) * (1 - head)
+            c = mix(c, blue, max(backline, max(midline, lowline)) * 0.9)
+            let glow = clamp01(1 - abs(v - 0.19 - wav) * 30) * smooth(0.08, 0.26, t)
+            c = mix(c, bright, glow * 0.7)
             c *= 1 - scales(x, y, size: 22) * 0.10
             return rgba(c * roundLight(v))
-        }, finC: hex(0xdc6e1c), finD: hex(0x2f8fe0))
-        a.fin(base: [(705, 256), (705, 320)], edge: [(590, 262), (560, 310), (605, 372)], root: hex(0xf09a30), tip: hex(0x2b7fd8), rays: 10)
-        a.line([(974, 262), (930, 268), (870, 296)], hex(0x3ec3ff), 0.9, 7)
-        a.line([(960, 230), (900, 208), (830, 200)], hex(0x3ec3ff), 0.7, 6)
+        }, finC: hex(0xcf7a2c), finD: hex(0x5e79a6))
+        a.fin(base: [(705, 256), (705, 320)], edge: [(590, 262), (560, 310), (605, 372)], root: hex(0xd98c38), tip: hex(0x5a76a6), rays: 10)
+        // Blue wavy lines radiating across the head and snout.
+        a.line([(980, 250), (938, 246), (892, 238)], lineBlue, 0.75, 5)
+        a.line([(978, 266), (934, 272), (888, 280)], lineBlue, 0.75, 5)
+        a.line([(964, 300), (922, 312), (882, 320)], lineBlue, 0.65, 4.5)
+        a.line([(906, 158), (866, 176), (842, 200)], lineBlue, 0.6, 4)
+        a.line([(948, 224), (902, 214), (856, 212)], lineBlue, 0.55, 4)
         gill(a, 792, 140, 372, bow: 40, 0.3)
-        a.line([(978, 262), (945, 272), (905, 270)], hex(0x07213f), 0.95, 4)
-        a.eye(872, 186, 21, iris: hex(0xf0c040))
+        a.line([(978, 262), (945, 272), (905, 270)], hex(0x16263c), 0.9, 4)
+        a.eye(872, 186, 21, iris: hex(0xe6bc52))
     }
 
     static func rognkjeks(_ a: Art) {
         let finC = hex(0x45606b), finD = hex(0x7d98a0)
+        // Small rounded caudal fin, and the small soft second-dorsal and anal lobes set far back
+        // near the tail (the first dorsal is buried under the skin as the humped crest).
         a.fin(base: [(100, 300), (84, 340), (100, 380)], edge: [(10, 280), (0, 340), (10, 400)], root: finC, tip: finD, rays: 10)
-        a.fin(base: [(160, 212), (330, 132)], edge: [(150, 150), (225, 100), (320, 92)], root: finC, tip: finD, rays: 9)
-        a.fin(base: [(180, 452), (350, 540)], edge: [(155, 520), (240, 570), (360, 590)], root: finC, tip: finD, rays: 9)
+        a.fin(base: [(170, 214), (322, 150)], edge: [(168, 158), (238, 118), (322, 118)], root: finC, tip: finD, alpha: 0.82, rays: 8)
+        a.fin(base: [(190, 450), (344, 528)], edge: [(176, 512), (254, 556), (352, 560)], root: finC, tip: finD, alpha: 0.82, rays: 8)
+        // High-backed, almost globular silhouette.
         let top: [XY] = [(95, 306), (160, 214), (290, 112), (480, 56), (650, 58), (800, 118), (910, 230), (965, 330)]
         let bottom: [XY] = [(95, 372), (160, 440), (290, 548), (480, 612), (650, 606), (800, 550), (910, 462), (965, 378)]
-        let back = hex(0x36525f), side = hex(0x6d8f96), belly = hex(0xcdb79f)
+        let back = hex(0x36525f), side = hex(0x6d8f96), belly = hex(0xc6b29a)
         a.body(top: top, bottom: bottom) { _, v, x, y in
             var c = flank(v, back: back, side: side, belly: belly, split: 0.58)
-            let m = artNoise.fbm(x * 0.02, y * 0.02, 3)
-            c *= 0.84 + 0.32 * m
-            // Rows of bony tubercles.
-            for row: Float in [0.16, 0.42, 0.68] {
-                let wobble = sin(x * 0.012) * 0.015
-                let dv = abs(v - row - wobble)
-                let bumps = pow(clamp01(sin(x * 0.075) * 0.5 + 0.5), 2)
-                if dv < 0.042 {
-                    let s = (1 - dv / 0.042) * bumps
-                    c = mix(c, hex(0xc0d2d0), s * 0.8)
-                }
-            }
-            c = mix(c, c * 0.72, spots(x, y, cell: 30, radius: 9, keep: 0.7) * 0.8)
+            // Broad, soft tonal mottling over the rotund flank.
+            let m = artNoise.fbm(x * 0.016, y * 0.016, 3)
+            c *= 0.86 + 0.26 * m
+            let blotch = smooth(0.52, 0.74, artNoise.fbm(x * 0.009 + 5, y * 0.012, 3))
+            c = mix(c, c * 0.8, blotch * (1 - smooth(0.6, 0.9, v)) * 0.4)
+            // Rough, warty skin: dense fine bumps, some catching light, some in shadow.
+            let hi = spots(x, y, cell: 17, radius: 5.2, keep: 0.72, seed: 3)
+            c = mix(c, mix(c, hex(0xaebfbf), 0.7), hi * 0.16 * (1 - smooth(0.62, 0.9, v)))
+            let lo = spots(x, y, cell: 23, radius: 5.8, keep: 0.6, seed: 9)
+            c = mix(c, c * 0.78, lo * 0.2)
+            // Faint cool sheen high on the arched back.
+            c = mix(c, hex(0x9fb6b8), (1 - smooth(0.0, 0.3, v)) * 0.1)
             return rgba(c * roundLight(v))
         }
-        // Sucker disc on the belly.
-        a.disc(610, 612, 62, hex(0x8c7d6e), 0.9, sy: 0.28)
-        a.fin(base: [(700, 310), (700, 400)], edge: [(590, 300), (560, 370), (610, 450)], root: finC, tip: finD, rays: 12)
-        a.line([(965, 350), (925, 372), (885, 368)], hex(0x101a1f), 0.9, 6)
-        a.eye(842, 262, 28, iris: hex(0xb38f58))
+
+        // Longitudinal rows of bony knobbly tubercles, drawn as discrete raised cones that
+        // follow the body contour: a tall dorsal crest plus three flank rows.
+        let T = Curve(top), B = Curve(bottom)
+        let coneBody = hex(0x7e969c), coneWarm = hex(0xa58b73)
+        func bump(_ cx: Double, _ cy: Double, _ r: Double, warm: Double = 0, crest: Bool = false) {
+            a.softDot(cx + r * 0.1, cy + r * 0.5, r * 1.15, hex(0x1d2d35), 0.24, sy: 0.9)     // cast shadow
+            a.disc(cx, cy, r, mix(coneBody, coneWarm, Float(warm)), crest ? 0.9 : 0.82)        // matte cone
+            a.softDot(cx + r * 0.05, cy + r * 0.32, r * 0.8, hex(0x233742), 0.26)             // lower shading
+            a.softDot(cx - r * 0.26, cy - r * 0.3, r * 0.62, hex(0xb3c0bd), 0.36)             // soft lit crown
+        }
+        func flankRow(_ f: Double, _ x0: Double, _ x1: Double, _ step: Double, _ baseR: Double,
+                      warm: Double = 0, seed: Int32 = 0) {
+            var x = x0, i: Int32 = 0
+            while x <= x1 {
+                let jx = Double(artNoise.hash(i &* 13 &+ seed, seed &+ 5) - 0.5) * step * 0.5
+                let jy = Double(artNoise.hash(seed &+ 3, i &* 7) - 0.5) * 12
+                let xx = x + jx
+                let yt = T.value(xx), yb = B.value(xx), span = yb - yt
+                if span > 64 {
+                    let tt = (xx - x0) / (x1 - x0)
+                    let fade = sin(Double.pi * min(1, max(0, tt)))
+                    let r = baseR * (0.45 + 0.55 * fade) * (0.82 + 0.4 * Double(artNoise.hash(i, seed)))
+                    bump(xx, yt + span * f + jy, r, warm: warm)
+                }
+                x += step; i += 1
+            }
+        }
+        // Flank rows, back to front; the mid-lateral row carries the largest tubercles.
+        flankRow(0.74, 210, 830, 66, 11.5, warm: 0.4, seed: 31)
+        flankRow(0.52, 175, 885, 62, 15.0, warm: 0.12, seed: 17)
+        flankRow(0.31, 190, 865, 60, 13.0, seed: 5)
+        // Dorsal crest: larger tubercles riding the top ridge, poking above the outline.
+        do {
+            var x = 300.0, i: Int32 = 0
+            while x <= 822 {
+                let jx = Double(artNoise.hash(i &* 5 &+ 71, 9) - 0.5) * 14
+                let xx = x + jx
+                let yt = T.value(xx)
+                let tt = (xx - 300) / 522
+                let fade = sin(Double.pi * min(1, max(0, tt)))
+                let r = 10.0 + 6.0 * fade
+                bump(xx, yt + r * 0.3, r, crest: true)
+                x += 47; i += 1
+            }
+        }
+
+        // Ventral sucker disc (the fused pelvic fins), bulging below the belly, seen at a low angle.
+        a.softDot(556, 616, 100, hex(0x16242b), 0.32, sy: 0.4)
+        a.disc(556, 600, 80, hex(0x5f5346), 0.92, sy: 0.42)          // outer rim shadow
+        a.disc(556, 598, 72, hex(0x857667), 0.95, sy: 0.42)          // fleshy rim
+        a.disc(556, 600, 52, hex(0x6c5f50), 0.85, sy: 0.42)          // cup wall
+        a.disc(553, 602, 34, hex(0x4e4538), 0.8, sy: 0.42)           // cup centre
+        a.softDot(544, 590, 30, hex(0xa8977f), 0.4, sy: 0.42)        // rim highlight
+
+        // Large rounded pectoral fin sweeping down toward the sucker.
+        a.fin(base: [(712, 300), (706, 404)], edge: [(584, 296), (548, 372), (602, 452)], root: finC, tip: finD, rays: 12)
+        // Gill opening behind the head, and a small terminal mouth.
+        gill(a, 792, 206, 356, bow: 28, 0.2)
+        a.line([(963, 352), (922, 372), (884, 366)], hex(0x101a1f), 0.85, 6)
+        a.softDot(905, 300, 60, hex(0x2a3b41), 0.14, sy: 0.9)        // soft cheek shading
+        a.eye(846, 252, 21, iris: hex(0xb08a52))
     }
 
     static func pigghaa(_ a: Art) {
@@ -570,91 +718,213 @@ enum FishArt {
     /// Goldsinny wrasse: small, slim, red-brown to gold, with a dark spot on top of the tail stalk
     /// and another at the front of the dorsal fin.
     static func bergnebb(_ a: Art) {
-        let back = hex(0x8a4a24), side = hex(0xc0803f), belly = hex(0xe8c58a)
-        wrasseBody(a, shader: { _, v, x, y in
+        let back = hex(0x864626), side = hex(0xba7a3c), belly = hex(0xe2c188)
+        let rust = hex(0x7a3a1c), paleC = hex(0xe4d098)
+        wrasseBody(a, shader: { t, v, x, y in
             var c = flank(v, back: back, side: side, belly: belly, split: 0.5)
-            c *= 0.9 + 0.2 * artNoise.fbm(x * 0.02, y * 0.03, 3)
-            c *= 1 - scales(x, y, size: 24) * 0.12
+            // Faint reddish mottling concentrated along the back.
+            let m = smooth(0.50, 0.72, artNoise.fbm(x * 0.02, y * 0.03, 3))
+            c = mix(c, rust, m * 0.36 * (1 - smooth(0.58, 0.90, v)))
+            // Scale network and pale scale centres.
+            c *= 1 - scales(x, y, size: 20) * 0.15
+            let net = spots(x, y, cell: 20, radius: 3.0, keep: 0.6)
+            c = mix(c, paleC, net * 0.28 * (1 - smooth(0.82, 1.0, v)))
+            // Pale line following the back.
+            let ll = clamp01(1 - abs(v - (0.36 + 0.05 * sin(Float(t) * 3))) * 38)
+            c = mix(c, paleC, ll * 0.16)
             return rgba(c * roundLight(v))
-        }, finC: hex(0x9a4a22), finD: hex(0xcf8a48))
-        a.disc(150, 172, 24, hex(0x1a120c), 0.9)
-        a.disc(745, 92, 18, hex(0x1a120c), 0.8)
+        }, finC: hex(0x94461f), finD: hex(0xc9833f))
         a.fin(base: [(705, 256), (705, 320)], edge: [(600, 262), (570, 310), (612, 368)], root: hex(0xb06a34), tip: hex(0xd8a066), rays: 9)
         gill(a, 792, 140, 372, bow: 40)
         a.line([(978, 262), (940, 271), (905, 276)], hex(0x2a1608), 0.6, 4)
         a.eye(872, 190, 24, iris: hex(0xc58a3a))
+        // Diagnostic dark blotches: upper base of the tail stalk, and the front of the dorsal fin.
+        a.softDot(138, 182, 30, hex(0x160f08), 0.5)
+        a.disc(138, 182, 18, hex(0x18110a), 0.92)
+        a.softDot(744, 96, 24, hex(0x160f08), 0.42)
+        a.disc(744, 98, 14, hex(0x18110a), 0.85)
     }
 
     /// Tusk: a long cod relative with one continuous dorsal fin, a rounded tail, pale-edged fins
     /// and a chin barbel.
     static func brosme(_ a: Art) {
-        let finC = hex(0x4a3524), finD = hex(0x6d5238), rim = hex(0xe3dccb)
-        a.fin(base: [(80, 150), (60, 165), (80, 180)], edge: [(8, 95), (0, 165), (8, 235)], root: finC, tip: finD, alpha: 0.85, rays: 14)
-        a.line([(10, 98), (2, 165), (10, 232)], rim, 0.75, 5)
-        let dorsalEdge: [XY] = [(85, 112), (300, 66), (560, 50), (770, 66)]
-        a.fin(base: [(90, 140), (300, 104), (560, 86), (760, 92)], edge: dorsalEdge, root: finC, tip: finD, alpha: 0.85, rays: 40)
-        a.line(dorsalEdge, rim, 0.7, 4)
-        let analEdge: [XY] = [(85, 215), (300, 252), (570, 262)]
-        a.fin(base: [(90, 190), (300, 222), (560, 236)], edge: analEdge, root: finC, tip: finD, alpha: 0.85, rays: 28)
-        a.line(analEdge, rim, 0.7, 4)
-        let top: [XY] = [(78, 148), (200, 124), (400, 96), (600, 84), (760, 86), (880, 104), (950, 130), (990, 160)]
-        let bottom: [XY] = [(78, 182), (200, 206), (400, 230), (600, 240), (760, 238), (880, 220), (950, 196), (990, 172)]
+        let finC = hex(0x4a3524), finD = hex(0x72583c), rim = hex(0xe6dfce), sub = hex(0x241a0f)
+        // One continuous median fin: the single long dorsal runs the whole back, wraps the
+        // rounded tail and continues as the long anal fin along the rear belly, all confluent.
+        let medBase: [XY] = [
+            (812, 112), (660, 88), (440, 94), (240, 116), (120, 140), (84, 150),
+            (62, 158), (50, 168), (62, 182),
+            (84, 190), (120, 196), (240, 214), (440, 232), (624, 246),
+        ]
+        let medEdge: [XY] = [
+            (812, 112), (660, 54), (440, 56), (240, 80), (110, 104), (78, 118),
+            (40, 130), (14, 168), (40, 206),
+            (78, 220), (110, 232), (240, 256), (440, 268), (624, 246),
+        ]
+        a.fin(base: medBase, edge: medEdge, root: finC, tip: finD, alpha: 0.85, rays: 56)
+        // Dark submarginal line, then the pale margin just outside it — the fin's defining edge.
+        let subMargin = zip(medEdge, medBase).map { e, b in (e.0 * 0.80 + b.0 * 0.20, e.1 * 0.80 + b.1 * 0.20) }
+        a.line(subMargin, sub, 0.55, 5)
+        a.line(medEdge, rim, 0.85, 5)
+        let top: [XY] = [(72, 150), (200, 124), (400, 98), (600, 86), (760, 88), (880, 106), (952, 134), (988, 164)]
+        let bottom: [XY] = [(72, 180), (200, 206), (400, 230), (600, 240), (760, 238), (880, 220), (952, 196), (988, 172)]
         let back = hex(0x5a3e27), side = hex(0x8a6a48), belly = hex(0xd9c8a6)
         a.body(top: top, bottom: bottom) { _, v, x, y in
             var c = flank(v, back: back, side: side, belly: belly, split: 0.55)
-            c = mix(c, c * 0.72, smooth(0.5, 0.7, artNoise.fbm(x * 0.02, y * 0.04, 3)) * (1 - smooth(0.5, 0.75, v)))
+            // Plain brownish body: only soft, fine clouding, kept to the upper flank.
+            let cloud = smooth(0.56, 0.82, artNoise.fbm(x * 0.013, y * 0.05, 3)) * (1 - smooth(0.42, 0.72, v))
+            c = mix(c, c * 0.86, cloud)
+            // Faint juvenile cross-bars, barely there on the back.
+            let bar = clamp01(cos(x * 0.040)) * (1 - smooth(0.46, 0.8, v))
+            c = mix(c, c * 0.92, bar * 0.5)
             c *= 1 - scales(x, y, size: 10) * 0.05
             return rgba(c * roundLight(v))
         }
-        a.fin(base: [(800, 168), (800, 200)], edge: [(720, 176), (700, 206), (735, 232)], root: finC, tip: finD, alpha: 0.75, rays: 8)
+        // Pectoral fin, low behind the head.
+        a.fin(base: [(802, 166), (802, 202)], edge: [(722, 176), (702, 208), (736, 236)], root: finC, tip: finD, alpha: 0.78, rays: 9)
         gill(a, 828, 100, 228, bow: 26)
-        a.line([(990, 170), (955, 182), (925, 180)], hex(0x241810), 0.5, 4)
-        a.line([(948, 196), (944, 222), (936, 236)], hex(0xbfae8a), 1, 3.5)
+        // Faint lateral line following the back's curve.
+        a.line([(830, 140), (600, 128), (360, 132), (160, 148)], hex(0x3a2a1a), 0.3, 2.5)
+        // Blunt snout shading and mouth.
+        a.softDot(968, 150, 40, hex(0x4a3824), 0.28, sy: 0.9)
+        a.line([(988, 172), (952, 184), (922, 182)], hex(0x241810), 0.55, 4)
+        // Single chin barbel.
+        a.line([(944, 192), (946, 220), (938, 240)], hex(0x241810), 0.4, 5)
+        a.line([(944, 192), (946, 220), (938, 240)], hex(0xcabf9c), 1, 3)
+        a.disc(936, 242, 4, hex(0xcabf9c), 1)
         a.eye(920, 138, 13, iris: hex(0x9a8656))
     }
 
-    /// Rabbit fish: a big blunt head with large green eyes, broad wing-like pectorals, a tall first
-    /// dorsal spine and a body tapering to a long thin tail.
+    /// Rabbit fish (chimaera): a big blunt head with a large green-reflecting eye, broad wing-like
+    /// pectorals, a tall first dorsal preceded by a stout erect venomous spine, a long low second
+    /// dorsal, wavy sensory canal lines on the head and a body tapering to a long whip-like tail.
     static func havmus(_ a: Art) {
-        a.taper([(400, 196), (250, 202), (120, 206), (0, 200)], 26, 2, hex(0x8d8a80))
-        a.fin(base: [(420, 178), (560, 150), (720, 108)], edge: [(420, 162), (560, 126), (720, 88)], root: hex(0x6e6458), tip: hex(0x9a9084), alpha: 0.7, rays: 20)
+        let back = hex(0x6a5848), side = hex(0xa6927a), belly = hex(0xcfc7ba)
+        let bronze = hex(0x8c6a40), irid = hex(0x6d7b62)
+        let finRoot = hex(0x5a5143), finTip = hex(0x8a8173)
+
+        // Long whip-like tail filament, drooping to a fine point, with a very low fin fold at its base.
+        let tailLine: [XY] = [(400, 198), (300, 206), (190, 214), (90, 222), (0, 230)]
+        a.taper(tailLine, 30, 1.2, mix(side, back, 0.45))
+        a.fin(base: [(400, 205), (300, 213), (210, 220)], edge: [(398, 215), (300, 221), (212, 225)], root: finRoot, tip: finTip, alpha: 0.4, rays: 0)
+
+        // Long low second dorsal fin hugging the back from behind the first dorsal to the tail joint.
+        // The base is tucked a little into the back so the membrane emerges flush under the body.
+        let d2base: [XY] = [(730, 114), (600, 140), (480, 170), (412, 194)]
+        let d2edge: [XY] = [(730, 84), (600, 110), (480, 142), (412, 172)]
+        a.fin(base: d2base, edge: d2edge, root: finRoot, tip: finTip, alpha: 0.55, rays: 20)
+
+        // Tall triangular first dorsal fin, trailing behind the spine.
+        a.fin(base: [(802, 94), (862, 112)], edge: [(804, 24), (834, 40), (862, 110)], root: finRoot, tip: finTip, alpha: 0.82, rays: 11)
+        // Stout erect venomous spine at the leading edge of the first dorsal.
+        a.fill([(770, 100), (780, 18), (794, 20), (802, 100)], hex(0x675c4b), 0.96)
+        a.line([(783, 96), (786, 22)], hex(0xeae3d5), 0.85, 3, smooth: false)
+        a.line([(794, 96), (793, 28)], hex(0x332c22), 0.55, 2.4, smooth: false)
+
         let top: [XY] = [(380, 188), (480, 152), (600, 120), (720, 98), (820, 94), (900, 112), (960, 150), (990, 190)]
         let bottom: [XY] = [(380, 204), (480, 228), (600, 252), (720, 262), (820, 262), (900, 250), (960, 230), (990, 206)]
-        let back = hex(0x7c6a5a), side = hex(0xb7aa98), belly = hex(0xd8d2c8)
         a.body(top: top, bottom: bottom) { t, v, x, y in
             var c = flank(v, back: back, side: side, belly: belly, split: 0.5)
-            let marble = smooth(0.48, 0.62, artNoise.fbm(x * 0.012, y * 0.05, 3))
-            c = mix(c, hex(0x5a4636), marble * 0.55 * (1 - smooth(0.4, 0.7, v)))
-            c += C3(0.05, 0.08, 0.10) * pow(clamp01(1 - abs(v - 0.45) * 3), 3)
-            _ = t
+            let upper = 1 - smooth(0.42, 0.72, v)
+            // Marbled darker blotches over the back.
+            let marble = smooth(0.5, 0.66, artNoise.fbm(x * 0.013, y * 0.05, 4))
+            c = mix(c, hex(0x4a3828), marble * 0.5 * upper)
+            // Cool bronze iridescent sheen along the mid-flank, greener toward the head.
+            let sheen = pow(clamp01(1 - abs(v - 0.47) * 2.6), 2)
+            c = mix(c, bronze, sheen * 0.24)
+            c = mix(c, irid, sheen * 0.12 * clamp01(t * 1.3 - 0.2))
+            // Scattered pale spots along the flank.
+            let pale = spots(x, y, cell: 46, radius: 4.0, keep: 0.38, seed: 2) * (1 - smooth(0.74, 0.92, v))
+            c = mix(c, hex(0xd4ccbc), pale * 0.42)
             return rgba(c * roundLight(v))
         }
-        a.fill([(760, 98), (790, 18), (816, 96)], hex(0x6e6458), 0.95)
-        a.line([(782, 98), (792, 16)], hex(0xe7e1d6), 0.9, 4, smooth: false)
-        a.fin(base: [(770, 200), (790, 244)], edge: [(640, 290), (560, 340), (700, 336)], root: hex(0x7c7064), tip: hex(0xa8a092), alpha: 0.8, rays: 12)
-        for (y0, y1) in [(170.0, 150.0), (200.0, 196.0)] {
-            a.line([(980, y0), (930, y1), (860, y1 + 6)], hex(0xe9e4da), 0.35, 3)
-        }
-        a.eye(905, 152, 30, iris: hex(0x4f8a5a))
+
+        // Large wing-like pectoral fin, sweeping down and back from behind the head.
+        a.fin(base: [(878, 198), (908, 250)], edge: [(700, 300), (628, 352), (776, 358)], root: finRoot, tip: finTip, alpha: 0.84, rays: 15)
+        // Smaller pelvic fin, lower and further back.
+        a.fin(base: [(752, 250), (778, 258)], edge: [(672, 300), (640, 332), (716, 334)], root: finRoot, tip: finTip, alpha: 0.72, rays: 8)
+
+        // Single gill opening in front of the pectoral.
+        a.line([(856, 148), (846, 196), (856, 238)], hex(0x221b13), 0.5, 4)
+
+        // Wavy sensory-canal lines on the head, the hallmark of a chimaera.
+        let canal = hex(0xd6cebd)
+        a.line([(986, 174), (950, 168), (916, 178), (890, 194)], canal, 0.5, 2.4)
+        a.line([(984, 196), (948, 200), (920, 214)], canal, 0.45, 2.3)
+        a.line([(972, 232), (946, 240), (924, 252)], canal, 0.4, 2.1)
+        a.line([(934, 130), (910, 150), (898, 178)], canal, 0.4, 2.1)
+
+        // Small beak-like mouth under the blunt snout.
+        a.fill([(990, 208), (964, 214), (956, 224), (984, 226)], hex(0x281f18), 0.85)
+        a.line([(986, 216), (960, 220)], hex(0xd8d0c0), 0.55, 2, smooth: false)
+
+        // Large iridescent green-reflecting eye on the big blunt head.
+        a.eye(912, 150, 28, iris: hex(0x4e7d58))
     }
 
     /// Lemon sole, seen from above at a low angle: small head, smooth mottled yellow-brown skin.
+    /// Lemon sole: a right-eyed flatfish seen from above. A broad smooth oval with a small head
+    /// at the right, both eyes on top, a continuous dorsal + anal fin fringe round almost the whole
+    /// rim, and skin richly marbled in warm brown, orange, yellow and muted green.
     static func lomre(_ a: Art) {
-        let fringe = hex(0x7a6440)
-        a.fin(base: [(140, 170), (120, 195), (140, 220)], edge: [(10, 120), (0, 195), (10, 270)], root: fringe, tip: hex(0xa48c5c), rays: 12)
-        a.fin(base: [(150, 165), (800, 66)], edge: [(140, 112), (460, 14), (810, 30)], root: fringe, tip: hex(0xa48c5c), rays: 40)
-        a.fin(base: [(150, 225), (800, 335)], edge: [(140, 280), (460, 388), (810, 375)], root: fringe, tip: hex(0xa48c5c), rays: 40)
-        let top: [XY] = [(135, 172), (260, 124), (450, 76), (640, 60), (820, 78), (920, 122), (975, 188)]
-        let bottom: [XY] = [(135, 220), (260, 264), (450, 318), (640, 342), (820, 322), (920, 272), (975, 206)]
-        a.body(top: top, bottom: bottom) { _, v, x, y in
-            var c = mix(hex(0x957d4c), hex(0xa68f5a), v)
-            c = mix(c, hex(0x5e4a2c), smooth(0.52, 0.7, artNoise.fbm(x * 0.03, y * 0.03 + 3, 3)) * 0.6)
-            c = mix(c, hex(0xd8c79c), spots(x, y, cell: 46, radius: 6, keep: 0.35) * 0.6)
-            return rgba(c * (0.82 + 0.24 * roundLight(v)))
+        let top: [XY] = [(150, 172), (280, 120), (470, 74), (660, 58), (830, 76), (925, 124), (978, 190)]
+        let bottom: [XY] = [(150, 220), (280, 272), (470, 320), (660, 338), (830, 318), (925, 268), (978, 202)]
+        let topC = Curve(top), botC = Curve(bottom)
+
+        // Soft translucent fin fringe. Built as a scalloped frill that follows the rim, fuller at
+        // mid-body and slimming to nothing at head and tail, with many fine rays.
+        let fRoot = hex(0x7a5f36), fTip = hex(0xbb9864)
+        func fringe(lower: Bool) {
+            var base: [XY] = [], edge: [XY] = []
+            for i in 0...22 {
+                let s = Double(i) / 22
+                let x = 150 + s * 700
+                let rim = (lower ? botC.value(min(x, 975)) : topC.value(min(x, 975))) + (lower ? 1 : -1)
+                let depth = 15 + 42 * sin(Double.pi * s)
+                let scallop = 5 * sin(s * Double.pi * 12 + (lower ? 1.3 : 0))
+                base.append((x, rim))
+                edge.append((x, rim + (lower ? depth - scallop : -depth + scallop)))
+            }
+            a.fin(base: base, edge: edge, root: fRoot, tip: fTip, alpha: 0.82, rays: 56)
         }
-        a.line([(975, 192), (958, 206), (936, 210)], hex(0x2e2412), 0.5, 4)
-        a.eye(905, 146, 12, iris: hex(0xb79a50))
-        a.eye(915, 182, 11, iris: hex(0xb79a50))
+        fringe(lower: false)
+        fringe(lower: true)
+        // Rounded tail fan at the left, continuous with the fringe.
+        a.fin(base: [(172, 150), (150, 196), (172, 242)],
+              edge: [(42, 130), (6, 196), (42, 262)], root: fRoot, tip: fTip, alpha: 0.85, rays: 18)
+
+        let back = hex(0x8a7340), side = hex(0xa58d58), belly = hex(0xb49c66)
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            // Domed base tone, lighter toward the raised midline.
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.5)
+            // Large warm marbling: orange-brown then deep reddish-brown blotches.
+            c = mix(c, hex(0xab7236), smooth(0.5, 0.72, artNoise.fbm(x * 0.012, y * 0.02, 4)) * 0.5)
+            c = mix(c, hex(0x6d4225), smooth(0.56, 0.8, artNoise.fbm(x * 0.02 + 5, y * 0.03 + 2, 4)) * 0.55)
+            // Muted greenish mottle, as on a real lemon sole.
+            c = mix(c, hex(0x6b6a3c), smooth(0.6, 0.82, artNoise.fbm(x * 0.034 + 9, y * 0.04 + 7, 3)) * 0.3)
+            // Pale yellow marbled patches, then warm and cream freckles.
+            c = mix(c, hex(0xd8c590), smooth(0.62, 0.84, artNoise.fbm(x * 0.05 + 2, y * 0.055, 3)) * 0.42)
+            c = mix(c, hex(0x4a3720), spots(x, y, cell: 28, radius: 3, keep: 0.5, seed: 4) * 0.3)
+            c = mix(c, hex(0xc98a46), spots(x, y, cell: 40, radius: 3.4, keep: 0.4, seed: 9) * 0.28)
+            c = mix(c, hex(0xe4d3a2), spots(x, y, cell: 66, radius: 4, keep: 0.3, seed: 7) * 0.3)
+            return rgba(c * (0.82 + 0.22 * roundLight(v)))
+        }
+
+        // Faint lateral line, a shade lighter, gently arched over the pectoral near the head.
+        var lat: [XY] = []
+        for i in 0...12 {
+            let x = 220 + Double(i) / 12 * 690
+            let mid = (topC.value(min(x, 975)) + botC.value(min(x, 975))) / 2
+            let arch = x > 740 ? -11 * Double(smooth(740, 900, Float(x))) : 0
+            lat.append((x, mid + arch))
+        }
+        a.line(lat, hex(0xd0bc8c), 0.2, 2.5)
+
+        // Small head: gill crease, a short down-turned mouth and the paired eyes on top.
+        a.line([(940, 120), (922, 158), (930, 200)], hex(0x4a3a24), 0.25, 3)
+        a.line([(978, 188), (960, 198), (944, 200)], hex(0x33281a), 0.55, 3)
+        a.eye(903, 150, 11, iris: hex(0xb79a50))
+        a.eye(910, 183, 10, iris: hex(0xb79a50))
     }
 
     /// Small-spotted catshark: slender, sandy brown with many small dark spots, both dorsals set
