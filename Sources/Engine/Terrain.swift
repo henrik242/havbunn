@@ -55,6 +55,8 @@ final class Terrain {
     static let size = 640
     let halfX: Float = 45
     let maxZ: Float = 90
+    /// Screen x of the coral mound, where light and attention gather.
+    let focusNdc: Float
     private(set) var data: [SIMD2<Float>]   // height, rock mask
 
     private struct Boulder { var x, z, r, h: Float }
@@ -81,6 +83,7 @@ final class Terrain {
         }
         // Reef mound behind the sand, where the coral grows.
         let moundNdc = -side * rng.float(0.05, 0.32)
+        focusNdc = moundNdc
         addBoulder(ndc: moundNdc, z: rng.float(11, 14), r: rng.float(3.0, 4.2), h: rng.float(1.3, 1.9))
         addBoulder(ndc: moundNdc + side * 0.28, z: rng.float(13, 17), r: rng.float(2.5, 3.5), h: rng.float(1.3, 2.0))
         for _ in 0..<16 {  // scattered stones

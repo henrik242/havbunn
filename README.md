@@ -20,16 +20,23 @@ species names off.
 The bundle is ad-hoc signed, which is enough on the machine that built it. To share it,
 build with `SIGN_IDENTITY="Developer ID Application: ..."` and notarize.
 
+## Known issue
+
+On a non-Retina display next to a Retina main display, macOS's legacy screen saver host
+confines live output to the bottom-left quarter of the non-Retina display. A minimal saver
+using only `draw(_:)` behaves the same way, so this is the host, not Havbunn.
+
 ## The scene
 
-A slope like the Tautra reef in Trondheimsfjord, where cold-water coral grows at about
-40 m, shallow enough to meet the lower edge of the kelp forest. The coral sits in
-slightly more light than it would have at most reefs.
+A slope like the Tautra reef in Trondheimsfjord, a moraine sill where cold-water coral
+grows from about 39 m. The look is fjord twilight: green water darkened by runoff, soft
+diffuse light, and colours muted with depth. Kelp is sparse, as it is near its depth limit.
 
-Animals are drawn 1.3 times life size so they read on screen.
+Animals are drawn 1.15 times life size so they read on screen.
 
-All species are native to Norwegian waters. The list, with Norwegian and Latin names, is
-in `Sources/Engine/Species.swift`.
+All species are native to Norwegian waters. Names were checked against Artsdatabanken's
+Artskart and WoRMS. The list, with Norwegian and Latin names, is in
+`Sources/Engine/Species.swift`.
 
 ## Layout
 

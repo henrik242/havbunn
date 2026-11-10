@@ -127,8 +127,16 @@ public final class HavbunnView: ScreenSaverView {
         r?.tearDown()
     }
 
+    /// The system host runs the view in a proxy window with no screen, whose backing scale
+    /// comes from the main display. Find the real display by size.
+    private var hostedScreen: NSScreen? {
+        guard let w = window, w.screen == nil else { return nil }
+        return NSScreen.screens.first { $0.frame.size == bounds.size }
+    }
+
     private var displayScale: CGFloat {
-        window?.screen?.backingScaleFactor ?? window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        hostedScreen?.backingScaleFactor ?? window?.screen?.backingScaleFactor ?? window?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor ?? 2
     }
 
     private func pixelSize() -> (Int, Int) {
@@ -164,7 +172,8 @@ public final class HavbunnView: ScreenSaverView {
         metalLayer.device = device
         preparing = true
         let seed = UInt64.random(in: 1...UInt64.max)
-        let names = HavbunnView.showNames
+        // Captions are unreadable at preview size.
+        let names = HavbunnView.showNames && !isPreview
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 let r = try Renderer(device: device, shaderSource: url, seed: seed)
@@ -192,10 +201,11 @@ public final class HavbunnView: ScreenSaverView {
         let ml = metalLayer
         let scale = displayScale
         let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
-        if ml.frame != bounds || ml.contentsScale != scale || ml.drawableSize != size {
+        let target = bounds
+        if ml.frame != target || ml.contentsScale != scale || ml.drawableSize != size {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            ml.frame = bounds
+            ml.frame = target
             ml.contentsScale = scale
             if size.width > 0, size.height > 0 { ml.drawableSize = size }
             CATransaction.commit()
@@ -255,7 +265,7 @@ public final class HavbunnView: ScreenSaverView {
         guard span >= 5 else { return }
         let visible = window?.occlusionState.contains(.visible) ?? false
         let attached = window != nil && superview != nil
-        saverLog.notice("perf #\(self.instanceID, privacy: .public) preview=\(self.isPreview, privacy: .public) live=\(HavbunnView.liveCount, privacy: .public) attached=\(attached, privacy: .public) visible=\(visible, privacy: .public) ticks/s=\(Int(Double(self.ticks) / span), privacy: .public) fps=\(Int(Double(self.reportFrames) / span), privacy: .public) waitAvgMs=\(Int(self.waitTotal / max(1, Double(self.ticks)) * 1000), privacy: .public) waitMaxMs=\(Int(self.waitMax * 1000), privacy: .public) nil=\(self.nilDrawables, privacy: .public) skipped=\(self.skippedForStall, privacy: .public)")
+        saverLog.debug("perf #\(self.instanceID, privacy: .public) preview=\(self.isPreview, privacy: .public) live=\(HavbunnView.liveCount, privacy: .public) attached=\(attached, privacy: .public) visible=\(visible, privacy: .public) ticks/s=\(Int(Double(self.ticks) / span), privacy: .public) fps=\(Int(Double(self.reportFrames) / span), privacy: .public) waitAvgMs=\(Int(self.waitTotal / max(1, Double(self.ticks)) * 1000), privacy: .public) waitMaxMs=\(Int(self.waitMax * 1000), privacy: .public) nil=\(self.nilDrawables, privacy: .public) skipped=\(self.skippedForStall, privacy: .public)")
         reportAt = now
         ticks = 0
         reportFrames = 0
@@ -274,6 +284,7 @@ public final class HavbunnView: ScreenSaverView {
     public override var configureSheet: NSWindow? {
         let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 120),
                              styleMask: [.titled], backing: .buffered, defer: true)
+        panel.isReleasedWhenClosed = false
         let content = panel.contentView!
         let box = NSButton(checkboxWithTitle: "Show species names", target: nil, action: nil)
         box.state = HavbunnView.showNames ? .on : .off
@@ -281,18 +292,27 @@ public final class HavbunnView: ScreenSaverView {
         content.addSubview(box)
         let ok = NSButton(title: "OK", target: self, action: #selector(closeSheet))
         ok.keyEquivalent = "\r"
-        ok.frame = NSRect(x: 260, y: 16, width: 80, height: 30)
+        ok.frame = NSRect(x: 256, y: 16, width: 84, height: ok.intrinsicContentSize.height)
         content.addSubview(ok)
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelSheet))
+        cancel.keyEquivalent = "\u{1b}"
+        cancel.frame = NSRect(x: 160, y: 16, width: 84, height: cancel.intrinsicContentSize.height)
+        content.addSubview(cancel)
         namesCheckbox = box
         sheet = panel
         return panel
+    }
+
+    @objc private func cancelSheet() {
+        namesCheckbox = nil
+        closeSheet()
     }
 
     @objc private func closeSheet() {
         if let box = namesCheckbox {
             let on = box.state == .on
             HavbunnView.showNames = on
-            renderer?.showNames = on
+            renderer?.showNames = on && !isPreview
         }
         guard let s = sheet else { return }
         if let parent = s.sheetParent { parent.endSheet(s) } else { s.close() }

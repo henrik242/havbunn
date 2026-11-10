@@ -95,9 +95,9 @@ enum BenthosArt {
     }
 
     static let hummerPalette = LobsterPalette(
-        back: hex(0x17335f), side: hex(0x41709f), belly: hex(0xd6cba8), dark: hex(0x0c1a33),
-        leg: hex(0x3f659a), claw: hex(0x28518a), highlight: hex(0x9dbde0),
-        speckle: 0.9, clawScale: 1.0, clawDepth: 1.0, banded: false, eye: 13, bodyY: 235, thickness: 1.0)
+        back: hex(0x16243a), side: hex(0x2f4a68), belly: hex(0xb8ae90), dark: hex(0x0a1220),
+        leg: hex(0x34506f), claw: hex(0x22385a), highlight: hex(0x7d97b5),
+        speckle: 0.9, clawScale: 1.22, clawDepth: 1.0, banded: false, eye: 13, bodyY: 235, thickness: 1.0)
 
     static let sjokrepsPalette = LobsterPalette(
         back: hex(0xe48e6b), side: hex(0xf5bc9c), belly: hex(0xfbe5d4), dark: hex(0xa24a33),
@@ -149,8 +149,8 @@ enum BenthosArt {
         }
         a.softDot(cx - 40, cy - 40, 110, hex(0xefb48a), 0.32, sy: 0.5)
         a.line([(cx - 34, cy - 34), (cx - 14, cy + 22), (cx + 14, cy + 22), (cx + 34, cy - 34)], edge, 0.35, 4)
-        a.eye(cx - 34, cy + 94, 9, iris: hex(0x1d1612))
-        a.eye(cx + 34, cy + 94, 9, iris: hex(0x1d1612))
+        a.disc(cx - 34, cy + 92, 6, hex(0x120d0a), 0.95, sy: 0.6)
+        a.disc(cx + 34, cy + 92, 6, hex(0x120d0a), 0.95, sy: 0.6)
     }
 
     // MARK: echinoderms
@@ -251,35 +251,33 @@ enum BenthosArt {
 
     // MARK: cnidarians
 
+    /// Plumose anemone: a stout column flaring into a broad, lobed plume of fine tentacles.
     static func sjonellik(_ a: Art, column: C3, crown: C3) {
         let h = a.unitH
-        let dome: (x: Double, y: Double) = (500, 330)
-        // Stout column flaring at the foot, half hidden by the plume.
-        let col: [XY] = [(250, h), (300, h - 90), (345, h - 260), (310, dome.y), (690, dome.y), (655, h - 260), (700, h - 90), (750, h)]
-        a.gradient(a.path(col), [(column * 0.5, 1, 0), (column * 0.95, 1, 0.32), (column * 1.08, 1, 0.5), (column * 0.48, 1, 1)],
-                   from: (290, 700), to: (710, 700))
-        for i in 0..<9 {
-            let x = 340 + Double(i) * 40
-            a.line([(x, dome.y + 60), (x + (x - 500) * 0.3, h - 2)], column * 0.6, 0.3, 5)
+        let neck = 470.0
+        let col: [XY] = [(300, h), (330, h - 120), (380, h - 280), (330, neck), (670, neck), (620, h - 280), (670, h - 120), (700, h)]
+        a.gradient(a.path(col), [(column * 0.55, 1, 0), (column * 0.95, 1, 0.35), (column * 1.02, 1, 0.55), (column * 0.5, 1, 1)],
+                   from: (300, 700), to: (700, 700))
+        for i in 0..<8 {
+            let x = 370 + Double(i) * 37
+            a.line([(x + (x - 500) * 0.4, neck + 40), (x + (x - 500) * 0.3, h - 2)], column * 0.6, 0.25, 4)
         }
-        // Solid underlayer so the plume never looks hollow.
-        a.disc(dome.x, dome.y + 8, 400, crown * 0.42, 1, sy: 0.72)
         var rng = a.rng
-        // Lobed plume of fine tentacles, dark and deep first, light on top.
-        for layer in 0..<4 {
-            let b = 1 - Double(layer) * 0.2
-            let tone = Float(0.58 + Double(layer) * 0.16)
-            for _ in 0..<420 {
-                let th = rng.range(.pi * 0.86, 2.14 * .pi)
-                let lobe = 1 + 0.15 * sin(th * 8 + Double(layer) * 1.3)
-                let reach = rng.range(0.72, 1.0) * 480 * b * lobe
-                let root = reach * 0.32
-                let x0 = dome.x + cos(th) * root, y0 = dome.y + sin(th) * root * 0.62
-                let x1 = dome.x + cos(th) * reach, y1 = max(4, dome.y + sin(th) * reach * 0.68)
-                let c = crown * tone * Float(rng.range(0.9, 1.1))
-                a.line([(x0, y0), ((x0 + x1) / 2 + rng.range(-9, 9), (y0 + y1) / 2 - 9), (x1, y1)], c, 0.65, 2.4, smooth: false)
+        // Lobes, back to front, each a dome of tentacles fanning out from the oral disc.
+        let lobes: [(Double, Double, Double, Float)] = [
+            (330, 330, 190, 0.62), (670, 330, 190, 0.62), (420, 270, 210, 0.78), (590, 265, 210, 0.78), (500, 300, 230, 0.95),
+        ]
+        for (lx, ly, r, tone) in lobes {
+            for _ in 0..<130 {
+                let th = rng.range(-.pi * 1.05, .pi * 0.05)
+                let len = r * rng.range(0.55, 1.0)
+                let x0 = lx + cos(th) * r * 0.25, y0 = ly + 60 + sin(th) * r * 0.12
+                let x1 = lx + cos(th) * len, y1 = max(6, ly + sin(th) * len * 0.85)
+                let c = crown * tone * Float(rng.range(0.88, 1.08))
+                a.line([(x0, y0), ((x0 + x1) / 2 + rng.range(-8, 8), (y0 + y1) / 2 - 6), (x1, y1)], c, 0.5, 9, smooth: false)
             }
         }
+        a.softDot(470, 200, 200, crown, 0.18, sy: 0.6)
         a.rng = rng
     }
 
@@ -375,7 +373,7 @@ enum BenthosArt {
                 let isTip = j == b.pts.count - 1
                 guard isTip || rng.chance(0.28) else { continue }
                 let side = rng.chance(0.5) ? -1.0 : 1.0
-                let cup = max(7, b.w * 0.74)
+                let cup = max(5, b.w * 0.5)
                 let px = q.0 + (isTip ? 0 : side * b.w * 0.75), py = q.1
                 a.disc(px, py, cup * 1.16, base * 0.72)
                 a.disc(px, py, cup, tip)
@@ -383,7 +381,7 @@ enum BenthosArt {
                 for k in 0..<12 {
                     let an = Double(k) / 12 * 2 * .pi
                     a.line([(px + cos(an) * cup * 0.5, py + sin(an) * cup * 0.5),
-                            (px + cos(an) * cup * 1.65, py + sin(an) * cup * 1.65)], C3(1, 0.97, 0.92), 0.85, 1.7, smooth: false)
+                            (px + cos(an) * cup * 1.65, py + sin(an) * cup * 1.65)], C3(1, 0.97, 0.92), 0.55, 1.5, smooth: false)
                 }
             }
         }
@@ -410,14 +408,14 @@ enum BenthosArt {
                 grow(px, py, th + f * 1.25 + rng.range(-0.12, 0.12), w * rng.range(0.70, 0.84), depth + 1)
             }
         }
-        grow(0, 0, -.pi / 2, 72, 0)
+        grow(0, 0, -.pi / 2, 92, 0)
         for l in fit(limbs, a).reversed() {
             let w = l.w, tone = Float(l.depth) / 4
             let shade = Float(0.7 + Double(l.depth) * 0.08)
             a.taper(l.pts, w * 1.12, w, base * shade * 0.65)
             a.taper(l.pts, w, w * 0.88, mix(base, tip, tone) * shade)
             let end = l.pts.last!
-            a.disc(end.0, end.1, w * 0.72, tip)
+            a.disc(end.0, end.1, w * 1.0, tip)
             a.softDot(end.0 - w * 0.2, end.1 - w * 0.2, w * 0.7, C3(1, 0.9, 0.86), 0.7)
             for q in l.pts.dropFirst().dropLast() {
                 a.disc(q.0 + rng.range(-w * 0.3, w * 0.3), q.1, w * 0.56, mix(base, tip, tone))
@@ -429,21 +427,23 @@ enum BenthosArt {
         }
     }
 
-    /// Tall sea pen, Funiculina quadrangularis. Very narrow cell.
+    /// Tall sea pen, Funiculina quadrangularis: a slender whip with short, irregular polyps,
+    /// no side branches.
     static func sjofjaer(_ a: Art) {
         let h = a.unitH
-        a.taper([(500, h - 4), (510, h * 0.6), (490, h * 0.3), (510, 12)], 75, 25, hex(0xdac7a4))
+        let axis: [XY] = [(500, h - 4), (506, h * 0.7), (494, h * 0.4), (504, 10)]
+        a.taper(axis, 60, 22, hex(0xd9cbb2))
+        a.taper(axis.map { ($0.0 - 8, $0.1) }, 18, 6, hex(0xf3eadb), 0.7)
         var rng = a.rng
-        for i in 0..<92 {
-            let t = Double(i) / 91
-            let y = h * 0.85 - t * (h * 0.84)
-            let x = 500 + sin(t * 3) * 10
-            let span = 200 - t * 110
-            for side in [-1.0, 1.0] {
-                let wob = rng.range(-16, 16)
-                a.taper([(x, y), (x + side * span * 0.6, y - 20 + wob), (x + side * span, y - 28 + wob)], 22, 8, hex(0xeed8b4), 0.95)
-                a.disc(x + side * span, y - 28 + wob, 13, hex(0xfff0d8), 0.95)
-            }
+        for i in 0..<70 {
+            let t = Double(i) / 69
+            let y = h * 0.88 - t * h * 0.86
+            let x = 500 + sin(t * 3) * 6
+            let side = rng.chance(0.5) ? -1.0 : 1.0
+            let len = rng.range(30, 90) * (1 - t * 0.5)
+            let tip = (x + side * len, y - rng.range(10, 30))
+            a.line([(x, y), tip], hex(0xf2e2cf), 0.85, 20)
+            a.disc(tip.0, tip.1, 22, hex(0xfbeee0), 0.9)
         }
         a.rng = rng
     }

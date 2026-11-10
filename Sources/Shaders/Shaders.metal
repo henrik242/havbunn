@@ -6,6 +6,7 @@ struct Uniforms {
     float time, aspect, focal, camY, horizon, fogK, fade, seed;
     float2 viewport;
     float2 worldHalf;
+    float2 extra;   // focus x in ndc, light level
 };
 
 struct Sprite {
@@ -15,6 +16,7 @@ struct Sprite {
     float4 anim;  // mode, phase, amp, lod bias
     float4 look;  // alpha, caustic amount, depth test (0/1), wave param
     float4 tint;  // rgb multiply, shade strength
+    float4 light; // flatness, saturation, unused, burial
 };
 
 constexpr sampler linearRepeat(address::repeat, filter::linear, mip_filter::linear);
@@ -54,15 +56,15 @@ static float fbm(float2 p, int oct) {
 
 static float3 waterColor(float y) {
     float t = saturate(y * 0.5 + 0.5);
-    const float3 deep = float3(0.016, 0.100, 0.150);
-    const float3 mid  = float3(0.045, 0.245, 0.310);
-    const float3 top  = float3(0.235, 0.560, 0.590);
+    const float3 deep = float3(0.012, 0.076, 0.084);
+    const float3 mid  = float3(0.040, 0.210, 0.205);
+    const float3 top  = float3(0.190, 0.470, 0.420);
     if (t < 0.55) return mix(deep, mid, smoothstep(0.0, 0.55, t));
     return mix(mid, top, pow((t - 0.55) / 0.45, 1.5));
 }
 
 static float3 applyWater(float3 c, float z, float ndcY, float fogK) {
-    c *= exp(-z * float3(0.055, 0.014, 0.010));
+    c *= exp(-z * float3(0.14, 0.025, 0.035));
     return mix(c, waterColor(ndcY), 1.0 - exp(-z * fogK));
 }
 
@@ -150,7 +152,7 @@ fragment BakeOut bakeFS(FSOut in [[stage_in]],
     float dither = (hash21(in.position.xy) - 0.5) / 255.0;
     if (hitZ < 0.0) {
         float3 w = waterColor(ndc.y);
-        w *= 0.97 + 0.06 * fbm(float2(ndc.x * 1.5, ndc.y * 2.5) + U.seed, 3);
+        w *= 0.985 + 0.03 * fbm(float2(ndc.x * 1.5, ndc.y * 2.5) + U.seed, 3);
         out.color = float4(w + dither, 0.0);
         out.depth = 1.0e4;
         return out;
@@ -183,15 +185,15 @@ fragment BakeOut bakeFS(FSOut in [[stage_in]],
     float g = fbm(rp * 3.2, 5);
     float3 rockCol = mix(float3(0.27, 0.27, 0.27), float3(0.58, 0.57, 0.53), g);
     float crust = smoothstep(0.46, 0.60, fbm(rp * 1.1 + 7.0, 4));
-    float3 coralline = mix(float3(0.62, 0.36, 0.42), float3(0.78, 0.55, 0.57), fbm(rp * 14.0, 2));
-    rockCol = mix(rockCol, coralline, crust * 0.85);
+    float3 coralline = mix(float3(0.48, 0.38, 0.38), float3(0.58, 0.48, 0.47), fbm(rp * 14.0, 2));
+    rockCol = mix(rockCol, coralline, crust * 0.45);
     float film = smoothstep(0.52, 0.70, fbm(rp * 2.3 + 31.0, 3));
     rockCol = mix(rockCol, float3(0.20, 0.17, 0.09), film * (1.0 - crust) * 0.75);
     float pale = smoothstep(0.62, 0.74, fbm(rp * 18.0 + 3.0, 2));
     rockCol += pale * 0.05;
 
     float grain = fbm(p * 26.0, 3);
-    float3 sandCol = mix(float3(0.50, 0.46, 0.37), float3(0.72, 0.67, 0.56), grain);
+    float3 sandCol = mix(float3(0.42, 0.41, 0.34), float3(0.60, 0.57, 0.48), grain);
     sandCol *= 0.86 + 0.28 * fbm(p * 0.8 + 5.0, 3);
     float2 cell = floor(p * 16.0);
     float2 r = hash22(cell);
@@ -217,7 +219,12 @@ fragment BakeOut bakeFS(FSOut in [[stage_in]],
     rockCol *= 1.0 - crack * 0.22;
     rockCol *= 0.82 + 0.36 * fbm(rp * 9.0 + 77.0, 4);
 
-    float3 albedo = mix(sandCol, rockCol, smoothstep(0.25, 0.7, rock));
+    // Fine silt settles on every upward face; sand darkens where it meets rock.
+    rockCol = mix(rockCol, float3(0.33, 0.33, 0.26), smoothstep(0.6, 0.95, n.y) * 0.5);
+    sandCol *= mix(1.0, 0.72, smoothstep(0.02, 0.2, rock) * (1.0 - smoothstep(0.3, 0.6, rock)));
+
+    float rockBlend = smoothstep(0.25, 0.7, rock + (fbm(rp * 5.0, 3) - 0.5) * 0.35);
+    float3 albedo = mix(sandCol, rockCol, rockBlend);
 
     float3 L = normalize(float3(0.25, 0.92, 0.22));
     float ndl = saturate(dot(n, L));
@@ -244,12 +251,16 @@ fragment BakeOut bakeFS(FSOut in [[stage_in]],
     }
     ao = saturate(1.0 - ao / 6.0 * 1.2);
 
-    float3 lit = albedo * (float3(0.46, 0.60, 0.64) * (0.55 + 0.45 * n.y) * ao
-                           + float3(0.86, 0.98, 0.98) * ndl * shadow);
+    float3 lit = albedo * (float3(0.36, 0.58, 0.52) * (0.55 + 0.45 * n.y) * ao
+                           + float3(0.80, 0.98, 0.88) * ndl * mix(0.55, 1.0, shadow));
+    // A pool of light on the reef and darker foreground, so the eye settles on the subject.
+    float2 pf = (ndc - float2(U.extra.x, -0.62)) / float2(0.9, 0.34);
+    float pool = mix(0.70, 1.12, exp(-dot(pf, pf))) * mix(0.62, 1.0, smoothstep(2.8, 5.5, hitZ));
+    lit *= pool;
     float3 col = applyWater(lit, hitZ, ndc.y, U.fogK);
 
     // Caustics focus near the viewer and on open floor; on far rock they read as noise.
-    float mask = saturate(n.y) * shadow * (1.0 - smoothstep(9.0, 22.0, hitZ)) * (1.0 - 0.55 * smoothstep(0.25, 0.7, rock));
+    float mask = saturate(n.y) * shadow * pool * (1.0 - smoothstep(8.0, 20.0, hitZ)) * (1.0 - 0.55 * rockBlend);
     out.color = float4(col + dither, mask);
     out.depth = hitZ;
     return out;
@@ -281,15 +292,15 @@ fragment float4 causticFS(FSOut in [[stage_in]], constant Uniforms &U [[buffer(0
                   + 0.012 * float2(sin(tau * (5.0 * uv.y) - t * 0.53), sin(tau * (5.0 * uv.x) + t * 0.47));
     float a = cellEdge(w, 5.0, t * 0.9);
     float b = cellEdge(w.yx + 0.37, 8.0, t * 1.2);
-    float c = pow(1.0 - smoothstep(0.0, 0.17, a), 2.4) + 0.55 * pow(1.0 - smoothstep(0.0, 0.13, b), 2.2);
+    float c = pow(1.0 - smoothstep(0.0, 0.34, a), 1.6) * (0.45 + 0.8 * pow(1.0 - smoothstep(0.0, 0.3, b), 1.4));
     return float4(saturate(c));
 }
 
 // ---- runtime backdrop ----
 
 static float causticAt(texture2d<float> tex, float2 xz, float t) {
-    float a = tex.sample(linearRepeat, xz * 0.21 + float2(t * 0.004, t * 0.006)).r;
-    float b = tex.sample(linearRepeat, xz * 0.087 + float2(-t * 0.003, t * 0.002)).r;
+    float a = tex.sample(linearRepeat, xz * 0.11 + float2(t * 0.004, t * 0.006)).r;
+    float b = tex.sample(linearRepeat, xz * 0.045 + float2(-t * 0.003, t * 0.002)).r;
     return a * (0.45 + b * 1.2);
 }
 
@@ -305,7 +316,8 @@ fragment float4 backdropFS(FSOut in [[stage_in]],
     if (z < 1000.0 && c.a > 0.001) {
         float2 xz = float2(in.ndc.x * U.aspect / U.focal * z, z);
         float k = causticAt(caustic, xz, U.time);
-        rgb += c.a * k * float3(0.24, 0.36, 0.34);
+        k = k / (1.0 + 0.6 * k);
+        rgb += c.a * k * float3(0.07, 0.14, 0.12) * U.extra.y;
     }
     return float4(rgb, 1.0);
 }
@@ -325,6 +337,7 @@ struct SpriteOut {
     float depthTest;
     float3 tint;
     float isFlat;
+    float4 light;
 };
 
 vertex SpriteOut spriteVS(uint vid [[vertex_id]],
@@ -406,6 +419,7 @@ vertex SpriteOut spriteVS(uint vid [[vertex_id]],
     o.causticAmt = s.look.y;
     o.depthTest = s.look.z;
     o.tint = s.tint.rgb;
+    o.light = s.light;
     return o;
 }
 
@@ -433,10 +447,19 @@ fragment float4 spriteFS(SpriteOut in [[stage_in]],
         c *= smoothstep(0.0, w, in.cell.x) * smoothstep(0.0, w, 1.0 - in.cell.x) * smoothstep(0.0, w, in.cell.y);
     }
 
+    // Burial: the base of grounded animals fades into the bottom.
+    if (in.light.w > 0.0) c *= 1.0 - smoothstep(1.0 - in.light.w, 1.0, in.cell.y);
+
     float3 rgb = c.rgb * in.tint * in.shade;
+    // Lit from above like the terrain: upper surfaces catch light, flanks and undersides fall
+    // into the water's green-blue. Colour at depth is muted.
+    float up = max(in.light.x, smoothstep(0.15, 0.9, 1.0 - in.cell.y));
+    rgb *= mix(float3(0.58, 0.72, 0.70), float3(1.0, 1.06, 1.0), up) * U.extra.y;
+    float Y = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+    rgb = mix(float3(Y), rgb, in.light.y);
     if (in.causticAmt > 0.0) {
         float k = causticAt(caustic, float2(in.world.x + in.world.y * 0.3, z + in.world.y * 0.5), U.time);
-        rgb += c.a * k * in.causticAmt * float3(0.34, 0.50, 0.47);
+        rgb += c.a * k / (1.0 + 0.6 * k) * in.causticAmt * float3(0.10, 0.18, 0.16);
     }
     float a = c.a;
     float3 unpremul = a > 0.0 ? rgb / a : rgb;
@@ -486,7 +509,7 @@ fragment float4 snowFS(SnowOut in [[stage_in]],
     if (a < 0.002) discard_fragment();
     float2 suv = float2(in.ndc.x * 0.5 + 0.5, 0.5 - in.ndc.y * 0.5);
     if (depth.sample(nearestClamp, suv).r < in.z) discard_fragment();
-    return float4(float3(0.78, 0.88, 0.84) * a, a);
+    return float4(min(waterColor(in.ndc.y) * 2.4 + 0.03, 1.0) * a, a);
 }
 
 // ---- overlay: god rays, vignette, fade ----
@@ -499,17 +522,20 @@ static float rayNoise(float x, float t) {
 fragment float4 overlayFS(FSOut in [[stage_in]], constant Uniforms &U [[buffer(0)]]) {
     float2 p = in.ndc;
     float t = U.time;
-    float sx = 0.25 * U.aspect + 0.12 * sin(t * 0.021);
+    float sx = U.extra.x * U.aspect + 0.12 * sin(t * 0.021);
     float sy = 2.4;
     float a = (p.x * U.aspect - sx) / (sy - p.y);
-    float r = rayNoise(a * 7.0 + U.seed, t * 0.055) * 0.65
-            + rayNoise(a * 17.0 - 4.0, t * 0.085) * 0.35
-            + rayNoise(a * 37.0 + 9.0, t * 0.13) * 0.14;
-    float fall = pow(saturate(p.y * 0.55 + 0.72), 1.7);
-    float3 rays = float3(0.50, 0.78, 0.76) * smoothstep(0.08, 0.75, r) * fall * 0.26;
+    float r = rayNoise(a * 4.0 + U.seed, t * 0.04) * 0.7
+            + rayNoise(a * 9.0 - 4.0, t * 0.07) * 0.3;
+    float fall = pow(saturate(p.y * 0.5 + 0.6), 2.4);
+    float3 rays = float3(0.40, 0.72, 0.62) * smoothstep(0.18, 0.8, r) * fall * 0.16 * U.extra.y;
+
+    // Brighter water above the lit reef, over everything so terrain and water agree.
+    float glow = exp(-pow((p.x - U.extra.x) / 0.85, 2.0)) * saturate(p.y * 0.8 + 0.35);
+    rays += waterColor(p.y) * glow * 0.16 * U.extra.y;
 
     float2 v = float2(p.x, p.y * 1.05);
-    float vig = smoothstep(0.75, 1.65, length(v)) * 0.42;
+    float vig = smoothstep(0.7, 1.6, length(v * float2(min(1.0, 1.6 / U.aspect), p.y < 0.0 ? 1.2 : 1.0))) * 0.48;
     float noise = hash21(in.position.xy + fract(t) * 311.0) * 1.6 / 255.0;
     float alpha = 1.0 - (1.0 - vig) * U.fade;
     return float4((rays + noise) * U.fade, alpha);

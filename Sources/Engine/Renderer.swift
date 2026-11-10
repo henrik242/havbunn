@@ -7,6 +7,7 @@ struct Uniforms {
     var horizon: Float = -0.4, fogK: Float = 0.058, fade: Float = 1, seed: Float = 0
     var viewport = SIMD2<Float>(1, 1)
     var worldHalf = SIMD2<Float>(45, 90)
+    var extra = SIMD2<Float>(0, 1)   // focus x in ndc, light level
 }
 
 struct Sprite {
@@ -16,6 +17,7 @@ struct Sprite {
     var anim: SIMD4<Float>
     var look: SIMD4<Float>
     var tint: SIMD4<Float>
+    var light = SIMD4<Float>(0, 0.8, 0, 0)   // flatness, saturation, unused, burial
 }
 
 public final class Renderer {
@@ -106,10 +108,16 @@ public final class Renderer {
         let aspect = Float(width) / Float(max(1, height))
         uniforms.aspect = aspect
         uniforms.seed = Float(seed % 997) * 0.37
+        // Narrower lens on ultrawide panels, so the edges do not stretch.
+        uniforms.focal = max(1.5, aspect / 1.25)
+        uniforms.horizon = -0.4 + 0.1 * min(1, max(0, (aspect - 1.78) / 0.6))
+        // Visibility differs from dive to dive.
+        uniforms.fogK = 0.075 + 0.03 * Float(seed % 101) / 100
         uniforms.worldHalf = SIMD2(45, 90)
 
         let atlas = Atlas.shared(device: device)
         let terrain = Terrain(seed: seed, aspect: aspect, focal: uniforms.focal)
+        uniforms.extra.x = terrain.focusNdc
         self.atlas = atlas
         self.terrain = terrain
         world = World(seed: seed, terrain: terrain, atlas: atlas, aspect: aspect, focal: uniforms.focal,
@@ -191,10 +199,13 @@ public final class Renderer {
 
         step(min(dt, 0.1))
         causticClock += dt
-        let time = Float(clock.truncatingRemainder(dividingBy: 7200))
+        let time = Float(clock.truncatingRemainder(dividingBy: 28800))
         uniforms.time = time
         uniforms.viewport = SIMD2(Float(texture.width), Float(texture.height))
-        uniforms.fade = Float(min(1, clock / 1.6))
+        let f = Float(min(1, clock / 2.4))
+        uniforms.fade = f * f * (3 - 2 * f)
+        // Slow cloud passing far above.
+        uniforms.extra.y = 0.92 + 0.06 * sin(time * 0.034) + 0.04 * sin(time * 0.0097 + 1.3)
         if fadeOverride >= 0 { uniforms.fade = fadeOverride }
         var u = uniforms
 
@@ -243,9 +254,11 @@ public final class Renderer {
         enc.setFragmentTexture(atlas.texture, index: 0)
         enc.setFragmentTexture(depth, index: 1)
         enc.setFragmentTexture(caustic, index: 2)
-        if count > 0 {
+        // The caption, when present, is the last instance and is drawn after the overlay.
+        let sceneCount = world.hasCaption ? count - 1 : count
+        if sceneCount > 0 {
             enc.drawIndexedPrimitives(type: .triangle, indexCount: gridIndexCount, indexType: .uint16,
-                                      indexBuffer: gridIndices, indexBufferOffset: 0, instanceCount: count)
+                                      indexBuffer: gridIndices, indexBufferOffset: 0, instanceCount: sceneCount)
         }
 
         enc.setRenderPipelineState(snowPipeline)
@@ -254,6 +267,16 @@ public final class Renderer {
 
         enc.setRenderPipelineState(overlayPipeline)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+
+        if world.hasCaption {
+            enc.setRenderPipelineState(spritePipeline)
+            enc.setVertexBuffer(gridVertices, offset: 0, index: 0)
+            enc.setVertexBuffer(buffer, offset: 0, index: 1)
+            enc.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 2)
+            enc.drawIndexedPrimitives(type: .triangle, indexCount: gridIndexCount, indexType: .uint16,
+                                      indexBuffer: gridIndices, indexBufferOffset: 0, instanceCount: 1,
+                                      baseVertex: 0, baseInstance: count - 1)
+        }
         enc.endEncoding()
 
         finish(cmd)

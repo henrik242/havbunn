@@ -203,7 +203,7 @@ final class Art {
         let outline = b + e.reversed()
         let p = path(outline, closed: true, smooth: false)
         let bc = base[base.count / 2], ec = edge[edge.count / 2]
-        gradient(p, [(root, alpha, 0), (tip, alpha * 0.72, 1)], from: bc, to: ec)
+        gradient(p, [(root, alpha, 0), (tip, alpha * 0.32, 1)], from: bc, to: ec)
         guard rays > 0 else { return }
         ctx.saveGState()
         ctx.addPath(p)
@@ -212,17 +212,17 @@ final class Art {
             let t = Double(i) / Double(rays)
             let bi = b[Int(t * Double(b.count - 1))]
             let ei = e[Int(t * Double(e.count - 1))]
-            line([bi, ei], root * 0.55, 0.45, 2.0, smooth: false)
+            line([bi, ei], root * 0.55, 0.25, 1.4, smooth: false)
         }
         ctx.restoreGState()
     }
 
     func eye(_ x: Double, _ y: Double, _ r: Double, iris: C3 = hex(0xc8a24a)) {
-        disc(x, y, r * 1.12, hex(0x14120e), 0.7)
+        disc(x, y, r * 1.12, hex(0x14120e), 0.45)
         disc(x, y, r, iris)
         softDot(x + r * 0.2, y + r * 0.35, r * 0.9, iris * 0.45, 0.8)
         disc(x, y, r * 0.58, hex(0x05070a))
-        disc(x - r * 0.26, y - r * 0.30, r * 0.20, C3(1, 1, 1), 0.92)
+        disc(x - r * 0.26, y - r * 0.30, r * 0.13, C3(1, 1, 1), 0.6)
     }
 
     private func composite(_ px: Int, _ py: Int, _ c: RGBA) {

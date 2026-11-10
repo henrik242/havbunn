@@ -13,10 +13,11 @@ enum Species {
     static let all: [SpeciesInfo] = [
         .init(key: "torsk", norsk: "Torsk", latin: "Gadus morhua"),
         .init(key: "sei", norsk: "Sei", latin: "Pollachius virens"),
+        .init(key: "lyr", norsk: "Lyr", latin: "Pollachius pollachius"),
         .init(key: "sild", norsk: "Sild", latin: "Clupea harengus"),
         .init(key: "makrell", norsk: "Makrell", latin: "Scomber scombrus"),
         .init(key: "laks", norsk: "Laks", latin: "Salmo salar"),
-        .init(key: "uer", norsk: "Vanlig uer", latin: "Sebastes norvegicus"),
+        .init(key: "uer", norsk: "Lusuer", latin: "Sebastes viviparus"),
         .init(key: "berggylt", norsk: "Berggylt", latin: "Labrus bergylta"),
         .init(key: "blaastaal", norsk: "Blåstål", latin: "Labrus mixtus"),
         .init(key: "rognkjeks", norsk: "Rognkjeks", latin: "Cyclopterus lumpus"),
@@ -31,17 +32,17 @@ enum Species {
         .init(key: "hummer", norsk: "Hummer", latin: "Homarus gammarus"),
         .init(key: "sjokreps", norsk: "Sjøkreps", latin: "Nephrops norvegicus"),
         .init(key: "taskekrabbe", norsk: "Taskekrabbe", latin: "Cancer pagurus"),
-        .init(key: "korstroll", norsk: "Korstroll", latin: "Asterias rubens"),
-        .init(key: "solstjerne", norsk: "Solstjerne", latin: "Crossaster papposus"),
+        .init(key: "korstroll", norsk: "Vanlig korstroll", latin: "Asterias rubens"),
+        .init(key: "solstjerne", norsk: "Piggsolstjerne", latin: "Crossaster papposus"),
         .init(key: "drobak", norsk: "Drøbakkråkebolle", latin: "Strongylocentrotus droebachiensis"),
         .init(key: "kraakebolle", norsk: "Rød kråkebolle", latin: "Echinus esculentus"),
         .init(key: "kamskjell", norsk: "Stort kamskjell", latin: "Pecten maximus"),
-        .init(key: "oskjell", norsk: "Oskjell", latin: "Modiolus modiolus"),
+        .init(key: "oskjell", norsk: "O-skjell", latin: "Modiolus modiolus"),
         .init(key: "sjonellik", norsk: "Sjønellik", latin: "Metridium senile"),
-        .init(key: "dodningehand", norsk: "Dødningehånd", latin: "Alcyonium digitatum"),
+        .init(key: "dodningehand", norsk: "Dødmannshånd", latin: "Alcyonium digitatum"),
         .init(key: "oyekorall", norsk: "Øyekorall", latin: "Desmophyllum pertusum"),
         .init(key: "sjotre", norsk: "Sjøtre", latin: "Paragorgia arborea"),
-        .init(key: "sjofjaer", norsk: "Sjøfjær", latin: "Funiculina quadrangularis"),
+        .init(key: "sjofjaer", norsk: "Stor piperenser", latin: "Funiculina quadrangularis"),
         .init(key: "stortare", norsk: "Stortare", latin: "Laminaria hyperborea"),
         .init(key: "sukkertare", norsk: "Sukkertare", latin: "Saccharina latissima"),
     ]
@@ -50,6 +51,7 @@ enum Species {
         var d: [SpriteDef] = [
             .init(name: "torsk", w: 720, h: 306) { FishArt.torsk($0) },
             .init(name: "sei", w: 680, h: 226) { FishArt.sei($0) },
+            .init(name: "lyr", w: 620, h: 216) { FishArt.lyr($0) },
             .init(name: "sild", w: 300, h: 96) { FishArt.sild($0) },
             .init(name: "makrell", w: 400, h: 144) { FishArt.makrell($0) },
             .init(name: "laks", w: 720, h: 244) { FishArt.laks($0) },
@@ -101,30 +103,36 @@ enum Species {
             d.append(.init(name: "taskekrabbe-\(f)", w: 380, h: 170) { BenthosArt.taskekrabbe($0, frame: f) })
         }
         for s in all {
-            d.append(.init(name: "cap-\(s.key)", w: 880, h: 64) { a in caption(a, s) })
+            d.append(.init(name: "cap-\(s.key)", w: 1150, h: 96) { a in caption(a, s) })
         }
         return d
     }
 
     private static func caption(_ a: Art, _ s: SpeciesInfo) {
+        // Sizes in cell pixels, converted to the cell's 1000-unit space.
+        let px = 1 / a.k
         let c = a.ctx
-        let head = CTFontCreateWithName("Avenir Next Medium" as CFString, 34 / a.k * 1.0, nil)
-        let sub = CTFontCreateWithName("Baskerville-Italic" as CFString, 32 / a.k * 1.0, nil)
+        let head = CTFontCreateWithName("AvenirNext-Medium" as CFString, 50 * px, nil)
+        let sub = CTFontCreateWithName("IowanOldStyle-Italic" as CFString, 44 * px, nil)
         let text = NSMutableAttributedString(string: s.norsk, attributes: [
             kCTFontAttributeName as NSAttributedString.Key: head,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.96),
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1),
+            kCTKernAttributeName as NSAttributedString.Key: 0.5 * px,
         ])
         text.append(NSAttributedString(string: "   " + s.latin, attributes: [
             kCTFontAttributeName as NSAttributedString.Key: sub,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.84, green: 0.93, blue: 0.93, alpha: 0.86),
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.90, green: 0.96, blue: 0.96, alpha: 0.95),
         ]))
         let line = CTLineCreateWithAttributedString(text)
+        let width = min(1100 * px, Double(CTLineGetTypographicBounds(line, nil, nil, nil)))
+        let x0 = 26 * px
+        // Soft scrim keeps the text legible over bright sand.
+        a.softDot(x0 + width / 2, a.unitH * 0.5, width / 2 + 40 * px, C3(0.01, 0.07, 0.10), 0.5, sy: (a.unitH * 0.62) / (width / 2 + 40 * px))
         c.saveGState()
         c.textMatrix = .identity
-        c.translateBy(x: 0, y: a.unitH * 0.72)
+        c.translateBy(x: x0, y: a.unitH * 0.68)
         c.scaleBy(x: 1, y: -1)
-        c.setShadow(offset: CGSize(width: 0, height: -1), blur: 7, color: CGColor(srgbRed: 0, green: 0.05, blue: 0.1, alpha: 0.85))
-        c.textPosition = CGPoint(x: 0, y: 0)
+        c.setShadow(offset: .zero, blur: 3 * px, color: CGColor(srgbRed: 0, green: 0.04, blue: 0.07, alpha: 0.8))
         CTLineDraw(line, c)
         c.restoreGState()
     }

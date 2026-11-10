@@ -7,8 +7,8 @@ private func flank(_ v: Float, back: C3, side: C3, belly: C3, split: Float = 0.4
     v < split ? mix(back, side, smooth(0.04, split, v)) : mix(side, belly, smooth(split, min(0.98, split + 0.36), v))
 }
 
-private func gill(_ a: Art, _ x: Double, _ y0: Double, _ y1: Double, bow: Double = 34, _ alpha: Double = 0.38) {
-    a.line([(x, y0), (x - bow, (y0 + y1) * 0.5), (x, y1)], hex(0x14100c), alpha, 5)
+private func gill(_ a: Art, _ x: Double, _ y0: Double, _ y1: Double, bow: Double = 34, _ alpha: Double = 0.2) {
+    a.line([(x, y0), (x - bow, (y0 + y1) * 0.5), (x, y1)], hex(0x14100c), min(alpha, 0.22), 3)
 }
 
 enum FishArt {
@@ -20,7 +20,7 @@ enum FishArt {
         a.fin(base: [(130, 188), (270, 148)], edge: [(135, 138), (190, 90), (280, 96)], root: finC, tip: finD, rays: 12)
         a.fin(base: [(430, 336), (590, 348)], edge: [(445, 400), (510, 422), (595, 392)], root: finC, tip: finD, rays: 12)
         a.fin(base: [(145, 242), (290, 290)], edge: [(150, 295), (210, 340), (295, 345)], root: finC, tip: finD, rays: 11)
-        a.fin(base: [(700, 345), (745, 340)], edge: [(640, 420), (690, 425), (735, 395)], root: finD, tip: finD, rays: 7)
+        a.fin(base: [(805, 328), (845, 318)], edge: [(760, 400), (800, 410), (842, 378)], root: finD, tip: finD, rays: 7)
 
         let top: [XY] = [(100, 203), (170, 188), (300, 132), (480, 88), (650, 75), (790, 94), (900, 150), (972, 212)]
         let bottom: [XY] = [(100, 228), (170, 240), (300, 285), (480, 332), (650, 350), (790, 340), (900, 298), (972, 228)]
@@ -34,7 +34,7 @@ enum FishArt {
             c = mix(c, hex(0x3b3a1f), sp * vis * 0.85)
             let llY = 0.40 + 0.14 * sin(Float(t) * 2.4 - 0.2) * (1 - t)
             let ll = clamp01(1 - abs(v - llY) * 70)
-            c = mix(c, hex(0xe6dfbd), ll * 0.85)
+            c = mix(c, hex(0xe6dfbd), ll * 0.4)
             c = c * (1 - scales(x, y, size: 13) * 0.05)
             return rgba(c * roundLight(v))
         }
@@ -47,7 +47,8 @@ enum FishArt {
 
     static func sei(_ a: Art) {
         let finC = hex(0x2d3b3a), finD = hex(0x4e5d5b)
-        a.fin(base: [(90, 170), (55, 185), (90, 200)], edge: [(0, 66), (40, 185), (0, 306)], root: finC, tip: finD, rays: 16)
+        a.fin(base: [(90, 170), (55, 185), (90, 200)], edge: [(0, 76), (25, 185), (0, 296)], root: finC, tip: finD, rays: 16)
+        a.fin(base: [(805, 258), (842, 252)], edge: [(765, 300), (800, 310), (840, 288)], root: finD, tip: finD, rays: 5)
         a.fin(base: [(120, 165), (270, 118)], edge: [(135, 118), (210, 72), (280, 76)], root: finC, tip: finD, rays: 11)
         a.fin(base: [(290, 112), (455, 76)], edge: [(300, 62), (375, 24), (465, 34)], root: finC, tip: finD, rays: 12)
         a.fin(base: [(480, 72), (630, 64)], edge: [(490, 26), (570, 8), (640, 26)], root: finC, tip: finD, rays: 11)
@@ -62,7 +63,7 @@ enum FishArt {
             let shine = pow(clamp01(1 - abs(v - 0.60) * 3.4), 3)
             c += C3(0.16, 0.18, 0.17) * shine
             let ll = clamp01(1 - abs(v - 0.40) * 60)
-            c = mix(c, hex(0xcfd8d0), ll * 0.75)
+            c = mix(c, hex(0xcfd8d0), ll * 0.35)
             c *= 1 - scales(x, y, size: 11) * 0.07
             _ = t
             return rgba(c * roundLight(v))
@@ -71,6 +72,36 @@ enum FishArt {
         gill(a, 790, 92, 256)
         a.line([(985, 184), (940, 196), (902, 192)], hex(0x101817), 0.8, 4)
         a.eye(902, 142, 20, iris: hex(0xb9c4b6))
+    }
+
+    /// Pollack: like saithe but bronze-olive, with a lateral line arching over the pectoral
+    /// and a jutting lower jaw. No barbel.
+    static func lyr(_ a: Art) {
+        let finC = hex(0x4a4630), finD = hex(0x75704c)
+        a.fin(base: [(92, 172), (60, 186), (92, 200)], edge: [(0, 84), (22, 186), (0, 290)], root: finC, tip: finD, alpha: 0.8, rays: 16)
+        a.fin(base: [(130, 165), (280, 122)], edge: [(140, 120), (210, 80), (290, 82)], root: finC, tip: finD, alpha: 0.75, rays: 11)
+        a.fin(base: [(300, 116), (460, 82)], edge: [(310, 66), (385, 30), (470, 40)], root: finC, tip: finD, alpha: 0.75, rays: 12)
+        a.fin(base: [(485, 78), (630, 70)], edge: [(495, 32), (570, 16), (640, 32)], root: finC, tip: finD, alpha: 0.75, rays: 11)
+        a.fin(base: [(150, 206), (310, 246)], edge: [(160, 248), (225, 288), (320, 294)], root: finD, tip: finD, alpha: 0.7, rays: 11)
+        a.fin(base: [(340, 254), (510, 278)], edge: [(355, 296), (430, 326), (520, 318)], root: finD, tip: finD, alpha: 0.7, rays: 12)
+        a.fin(base: [(810, 262), (845, 258)], edge: [(770, 312), (800, 318), (840, 292)], root: finD, tip: finD, alpha: 0.7, rays: 5)
+        let top: [XY] = [(85, 176), (170, 160), (300, 116), (480, 80), (650, 68), (790, 80), (900, 118), (975, 166)]
+        let bottom: [XY] = [(85, 196), (170, 206), (300, 236), (480, 270), (650, 280), (790, 270), (900, 236), (985, 200)]
+        let back = hex(0x4b4a2a), side = hex(0xa59a62), belly = hex(0xe7e1c8)
+        a.body(top: top, bottom: bottom) { t, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.48)
+            c = mix(c, c * 0.8, smooth(0.5, 0.7, artNoise.fbm(x * 0.02, y * 0.03, 3)) * (1 - smooth(0.45, 0.7, v)))
+            // Lateral line arches up over the pectoral, then runs straight to the tail.
+            let ll = 0.36 - 0.14 * smooth(0.55, 0.78, t) * (1 - smooth(0.78, 0.9, t))
+            c = mix(c, hex(0x2f2c18), clamp01(1 - abs(v - ll) * 55) * 0.8)
+            c *= 1 - scales(x, y, size: 11) * 0.06
+            return rgba(c * roundLight(v))
+        }
+        a.fin(base: [(760, 172), (760, 214)], edge: [(675, 176), (645, 210), (685, 248)], root: finC, tip: finD, alpha: 0.7, rays: 9)
+        gill(a, 795, 96, 252, bow: 30, 0.2)
+        a.line([(990, 196), (946, 210), (900, 204)], hex(0x22200f), 0.45, 4)
+        a.fill([(985, 198), (998, 206), (980, 212)], hex(0xbdb38a))
+        a.eye(905, 146, 19, iris: hex(0x8f8452))
     }
 
     static func sild(_ a: Art) {
@@ -93,6 +124,7 @@ enum FishArt {
             _ = t
             return rgba(c * (0.72 + 0.34 * roundLight(v)))
         }
+        a.fin(base: [(770, 214), (770, 238)], edge: [(700, 240), (680, 262), (712, 268)], root: finC, tip: finD, alpha: 0.6, rays: 5)
         gill(a, 808, 92, 244, bow: 26, 0.35)
         a.line([(985, 157), (948, 186), (908, 182)], hex(0x101820), 0.7, 6)
         a.eye(905, 138, 25, iris: hex(0xdcdcc8))
@@ -104,6 +136,7 @@ enum FishArt {
         a.fin(base: [(560, 100), (690, 92)], edge: [(575, 34), (625, 12), (700, 70)], root: finC, tip: finD, rays: 9)
         a.fin(base: [(310, 122), (430, 108)], edge: [(320, 66), (360, 50), (438, 92)], root: finC, tip: finD, rays: 7)
         a.fin(base: [(310, 240), (430, 254)], edge: [(320, 296), (360, 310), (440, 262)], root: finD, tip: finD, rays: 7)
+        a.fin(base: [(640, 262), (690, 264)], edge: [(600, 300), (640, 312), (690, 290)], root: finD, tip: finD, rays: 5)
         for i in 0..<5 {
             let x = 110 + Double(i) * 38
             a.fill([(x, 160 - Double(i) * 6), (x + 14, 134 - Double(i) * 6), (x + 22, 156 - Double(i) * 6)], finC)
@@ -196,6 +229,7 @@ enum FishArt {
         let top: [XY] = [(92, 206), (170, 172), (340, 122), (520, 92), (690, 88), (830, 118), (920, 180), (975, 252)]
         let bottom: [XY] = [(92, 276), (170, 308), (340, 372), (520, 408), (690, 414), (830, 386), (920, 330), (975, 272)]
         a.body(top: top, bottom: bottom, shader)
+        a.fin(base: [(690, 396), (735, 392)], edge: [(640, 450), (680, 462), (730, 430)], root: finC, tip: finD, alpha: 0.75, rays: 6)
     }
 
     static func berggylt(_ a: Art) {
@@ -217,12 +251,12 @@ enum FishArt {
     }
 
     static func blaastaal(_ a: Art) {
-        let orange = hex(0xe88424), deep = hex(0xc25b16), blue = hex(0x1f71d0), bright = hex(0x38b1f0)
+        let orange = hex(0xcf7a2c), deep = hex(0xa95520), blue = hex(0x2a62a0), bright = hex(0x3f9bd4)
         wrasseBody(a, shader: { t, v, x, y in
             var c = v < 0.6 ? mix(deep, orange, smooth(0, 0.45, v)) : mix(orange, hex(0xf6c15a), smooth(0.6, 1, v))
             // Blue head and back streaks, typical of the breeding male.
             let wav = artNoise.fbm(x * 0.012, y * 0.02, 2) * 0.08
-            let head = smooth(0.70, 0.78, t + wav)
+            let head = smooth(0.62, 0.82, t + wav * 2)
             let backline = clamp01(1 - abs(v - 0.20 - wav) * 16) * smooth(0.10, 0.28, t)
             let midline = clamp01(1 - abs(v - 0.54 + wav) * 22) * smooth(0.20, 0.45, t)
             c = mix(c, blue, max(head * 0.96, max(backline, midline) * 0.95))
@@ -275,9 +309,9 @@ enum FishArt {
         let c1 = hex(0x4f5b62), c2 = hex(0x6a767c)
         a.fill([(92, 148), (10, 40), (8, 66), (28, 150), (0, 240), (60, 186), (92, 174)], c1, 1)
         a.fill([(340, 92), (372, 34), (392, 30), (416, 82)], c1)
-        a.line([(358, 92), (366, 22)], hex(0xd8dcd6), 1, 5, smooth: false)
+        a.line([(412, 84), (396, 26)], hex(0xd8dcd6), 1, 5, smooth: false)
         a.fill([(632, 72), (665, 16), (688, 10), (720, 62)], c1)
-        a.line([(650, 74), (660, 6)], hex(0xd8dcd6), 1, 5.5, smooth: false)
+        a.line([(716, 64), (698, 4)], hex(0xd8dcd6), 1, 5.5, smooth: false)
         let top: [XY] = [(85, 150), (200, 122), (360, 92), (520, 74), (690, 60), (820, 70), (920, 108), (995, 162)]
         let bottom: [XY] = [(85, 172), (200, 186), (360, 214), (520, 232), (690, 238), (820, 226), (920, 198), (995, 172)]
         let back = hex(0x47535a), side = hex(0x6e7a7f), belly = hex(0xe5e8e0)
@@ -329,47 +363,44 @@ enum FishArt {
         a.line([(918, 126), (910, 138), (906, 154)], hex(0xd8d2b7), 0.9, 2.1)
     }
 
+    /// Anglerfish lying on the bottom: broad flat head, wide closed mouth with the lower jaw
+    /// jutting, eyes on top, fringed edge, lure on the snout.
     static func breiflabb(_ a: Art) {
-        let skin = hex(0x7a6346), dark = hex(0x45371f), pale = hex(0xc9b794)
-        // Tail and fins behind body.
-        a.fin(base: [(150, 330), (130, 370), (150, 410)], edge: [(10, 250), (0, 370), (20, 460)], root: dark, tip: skin, rays: 12)
-        a.fin(base: [(220, 300), (400, 250)], edge: [(215, 235), (300, 170), (420, 190)], root: dark, tip: skin, rays: 11)
-        let top: [XY] = [(140, 340), (250, 300), (390, 248), (520, 188), (680, 140), (820, 142), (925, 190), (985, 286)]
-        let bottom: [XY] = [(140, 400), (250, 420), (390, 462), (520, 504), (680, 530), (820, 528), (925, 490), (990, 420)]
-        a.body(top: top, bottom: bottom) { t, v, x, y in
-            var c = mix(skin, pale, smooth(0.62, 1.0, v))
-            let m = artNoise.fbm(x * 0.017, y * 0.022, 4)
-            c = mix(c, dark, smooth(0.46, 0.66, m) * 0.85)
-            c = mix(c, hex(0xa58d62), smooth(0.60, 0.74, artNoise.fbm(x * 0.04 + 9, y * 0.05, 3)) * 0.8)
-            c *= 1 - spots(x, y, cell: 15, radius: 3.8, keep: 0.45) * 0.28
-            _ = t
-            return rgba(c * (0.68 + 0.36 * roundLight(v)))
+        let skin = hex(0x6f5a3f), dark = hex(0x3e321d), pale = hex(0xb7a582)
+        a.fin(base: [(150, 352), (130, 380), (150, 408)], edge: [(10, 300), (0, 380), (20, 450)], root: dark, tip: skin, alpha: 0.75, rays: 12)
+        a.fin(base: [(250, 330), (420, 300)], edge: [(250, 280), (330, 240), (430, 262)], root: dark, tip: skin, alpha: 0.7, rays: 10)
+        let top: [XY] = [(140, 345), (250, 320), (390, 295), (520, 262), (680, 235), (820, 232), (925, 252), (985, 300)]
+        let bottom: [XY] = [(140, 395), (250, 405), (390, 420), (520, 440), (680, 455), (820, 452), (925, 430), (990, 372)]
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = mix(skin, pale, smooth(0.7, 1.0, v))
+            let m = artNoise.fbm(x * 0.015, y * 0.02, 4)
+            c = mix(c, dark, smooth(0.35, 0.75, m) * 0.55)
+            c = mix(c, hex(0x9a8560), smooth(0.58, 0.76, artNoise.fbm(x * 0.04 + 9, y * 0.05, 3)) * 0.5)
+            c *= 1 - spots(x, y, cell: 15, radius: 3.6, keep: 0.4) * 0.22
+            return rgba(c * (0.70 + 0.34 * roundLight(v)))
         }
-        // Huge upturned mouth.
-        a.fill([(990, 330), (850, 360), (690, 345), (640, 318), (700, 400), (860, 425), (985, 392)], hex(0x1e1411), 0.98)
-        let lip = hex(0xb29a72)
-        a.line([(990, 330), (850, 360), (690, 345), (640, 318)], lip, 1, 8)
-        a.line([(985, 394), (860, 427), (700, 402), (640, 318)], lip, 1, 8)
-        for i in 0..<22 {
-            let t = Double(i) / 21
-            let x = 985 - t * 320, yU = 332 + 30 * sin(t * 2.6)
-            a.line([(x, yU), (x - 4, yU + 25 + Double(i % 3) * 6)], hex(0xefeadc), 1, 3.2, smooth: false)
-            let yL = 394 + 36 * sin(t * 2.5)
-            a.line([(x + 4, yL), (x + 1, yL - 19 - Double(i % 2) * 7)], hex(0xefeadc), 0.95, 2.8, smooth: false)
+        // Rounded pectoral behind the head.
+        a.fin(base: [(560, 360), (585, 420)], edge: [(470, 410), (490, 470), (580, 480)], root: skin * 0.85, tip: hex(0x8c7756), alpha: 0.8, rays: 9)
+        // Closed mouth along the front, lower jaw ahead of the upper.
+        a.line([(990, 336), (930, 350), (840, 352), (760, 340)], hex(0x1c140f), 0.8, 7)
+        a.fill([(998, 344), (990, 364), (930, 368), (900, 356), (940, 352)], hex(0x7c6748))
+        for i in 0..<6 {
+            let x = 980 - Double(i) * 16
+            a.fill([(x - 4, 350), (x, 336 - Double(i % 2) * 4), (x + 4, 350)], hex(0xa89f88), 0.9, raw: true)
         }
-        // Fringe of skin flaps along the jaw.
-        for i in 0..<28 {
-            let t = Double(i) / 27
-            let x = 180 + t * 790, y = 410 + 118 * sin(min(1, t * 1.2) * 1.7) - t * t * 62
-            let len = 16 + (i % 4 == 0 ? 24.0 : 7.0)
-            a.taper([(x, y), (x + 5, y + len * 0.6), (x - 3, y + len)], 8, 1.5, i % 2 == 0 ? hex(0x6d5a3e) : hex(0xb19b73))
+        // Skin fringe along the jaw and flanks.
+        for i in 0..<30 {
+            let t = Double(i) / 29
+            let x = 170 + t * 810, y = 404 + 46 * sin(min(1, t * 1.15) * 1.7) - t * t * 50
+            let len = 10 + (i % 4 == 0 ? 18.0 : 6.0)
+            a.taper([(x, y), (x + 4, y + len * 0.6), (x - 2, y + len)], 7, 1.4, i % 2 == 0 ? hex(0x5f4e35) : hex(0x9b8862), 0.85)
         }
-        a.fin(base: [(560, 330), (570, 420)], edge: [(440, 400), (450, 510), (580, 545)], root: skin * 0.9, tip: hex(0x9a8560), rays: 11)
-        // Lure rod and flap.
-        a.line([(838, 146), (880, 80), (956, 56), (994, 76)], hex(0xbaa881), 1, 5)
-        a.taper([(994, 76), (982, 104), (994, 124)], 24, 3, hex(0xe2d5b3))
-        a.line([(742, 146), (758, 104), (782, 86)], hex(0xbaa881), 0.95, 3.8)
-        a.eye(786, 216, 20, iris: hex(0xc9a853))
+        // Lure rod and flap, eyes high on the head.
+        a.line([(880, 250), (905, 190), (950, 160), (982, 170)], hex(0xa8976f), 0.95, 4.5)
+        a.taper([(982, 170), (974, 192), (984, 206)], 20, 3, hex(0xd5c7a3))
+        a.line([(800, 240), (812, 210), (830, 198)], hex(0xa8976f), 0.8, 3.4)
+        a.eye(770, 252, 14, iris: hex(0xa88f50))
+        a.eye(735, 246, 11, iris: hex(0x8a7543))
     }
 
     static func steinbit(_ a: Art) {
