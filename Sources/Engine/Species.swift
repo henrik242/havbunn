@@ -9,7 +9,8 @@ struct SpeciesInfo {
     let english: String
 }
 
-/// Every organism in the scene. All are native to Norwegian waters.
+/// Every organism in the scene. All are native to Norwegian waters. Norwegian names follow
+/// Artsdatabanken (Artskart) where it has one, otherwise the majority of other references.
 enum Species {
     static let all: [SpeciesInfo] = [
         .init(key: "torsk", norsk: "Torsk", latin: "Gadus morhua", english: "Atlantic cod"),
@@ -19,9 +20,15 @@ enum Species {
         .init(key: "makrell", norsk: "Makrell", latin: "Scomber scombrus", english: "Atlantic mackerel"),
         .init(key: "laks", norsk: "Laks", latin: "Salmo salar", english: "Atlantic salmon"),
         .init(key: "uer", norsk: "Lusuer", latin: "Sebastes viviparus", english: "Norway redfish"),
-        .init(key: "berggylt", norsk: "Berggylt", latin: "Labrus bergylta", english: "Ballan wrasse"),
+        .init(key: "berggylt", norsk: "Berggylte", latin: "Labrus bergylta", english: "Ballan wrasse"),
         .init(key: "blaastaal", norsk: "Blåstål", latin: "Labrus mixtus", english: "Cuckoo wrasse"),
         .init(key: "rognkjeks", norsk: "Rognkjeks", latin: "Cyclopterus lumpus", english: "Lumpfish"),
+        .init(key: "bergnebb", norsk: "Bergnebb", latin: "Ctenolabrus rupestris", english: "Goldsinny wrasse"),
+        .init(key: "brosme", norsk: "Brosme", latin: "Brosme brosme", english: "Tusk"),
+        .init(key: "havmus", norsk: "Havmus", latin: "Chimaera monstrosa", english: "Rabbit fish"),
+        .init(key: "lomre", norsk: "Lomre", latin: "Microstomus kitt", english: "Lemon sole"),
+        .init(key: "krinakrabbe", norsk: "Krinakrabbe", latin: "Galathea strigosa", english: "Spiny squat lobster"),
+        .init(key: "rodpolse", norsk: "Rødpølse", latin: "Parastichopus tremulus", english: "Red sea cucumber"),
         .init(key: "pigghaa", norsk: "Pigghå", latin: "Squalus acanthias", english: "Spiny dogfish"),
         .init(key: "haakjerring", norsk: "Håkjerring", latin: "Somniosus microcephalus", english: "Greenland shark"),
         .init(key: "breiflabb", norsk: "Breiflabb", latin: "Lophius piscatorius", english: "Angler"),
@@ -30,14 +37,14 @@ enum Species {
         .init(key: "piggskate", norsk: "Piggskate", latin: "Raja clavata", english: "Thornback ray"),
         .init(key: "glassmanet", norsk: "Glassmanet", latin: "Aurelia aurita", english: "Moon jelly"),
         .init(key: "brennmanet", norsk: "Brennmanet", latin: "Cyanea capillata", english: "Lion's mane jellyfish"),
-        .init(key: "sjostikkelsbaer", norsk: "Sjøstikkelsbær", latin: "Pleurobrachia pileus", english: "Sea gooseberry"),
+        .init(key: "sjostikkelsbaer", norsk: "Kulekammanet", latin: "Pleurobrachia pileus", english: "Sea gooseberry"),
         .init(key: "hummer", norsk: "Hummer", latin: "Homarus gammarus", english: "European lobster"),
         .init(key: "sjokreps", norsk: "Sjøkreps", latin: "Nephrops norvegicus", english: "Norway lobster"),
         .init(key: "taskekrabbe", norsk: "Taskekrabbe", latin: "Cancer pagurus", english: "Brown crab"),
         .init(key: "korstroll", norsk: "Vanlig korstroll", latin: "Asterias rubens", english: "Common starfish"),
         .init(key: "solstjerne", norsk: "Piggsolstjerne", latin: "Crossaster papposus", english: "Common sunstar"),
-        .init(key: "drobak", norsk: "Drøbakkråkebolle", latin: "Strongylocentrotus droebachiensis", english: "Green sea urchin"),
-        .init(key: "kraakebolle", norsk: "Rød kråkebolle", latin: "Echinus esculentus", english: "Edible sea urchin"),
+        .init(key: "drobak", norsk: "Drøbaksjøpiggsvin", latin: "Strongylocentrotus droebachiensis", english: "Green sea urchin"),
+        .init(key: "kraakebolle", norsk: "Svabergsjøpiggsvin", latin: "Echinus esculentus", english: "Edible sea urchin"),
         .init(key: "kamskjell", norsk: "Stort kamskjell", latin: "Pecten maximus", english: "King scallop"),
         .init(key: "oskjell", norsk: "O-skjell", latin: "Modiolus modiolus", english: "Horse mussel"),
         .init(key: "sjonellik", norsk: "Sjønellik", latin: "Metridium senile", english: "Plumose anemone"),
@@ -61,6 +68,12 @@ enum Species {
             .init(name: "berggylt", w: 500, h: 240) { FishArt.berggylt($0) },
             .init(name: "blaastaal", w: 400, h: 192) { FishArt.blaastaal($0) },
             .init(name: "rognkjeks", w: 400, h: 248) { FishArt.rognkjeks($0) },
+            .init(name: "bergnebb", w: 260, h: 126) { FishArt.bergnebb($0) },
+            .init(name: "brosme", w: 640, h: 200) { FishArt.brosme($0) },
+            .init(name: "havmus", w: 720, h: 260) { FishArt.havmus($0) },
+            .init(name: "lomre", w: 380, h: 152) { FishArt.lomre($0) },
+            .init(name: "krinakrabbe", w: 260, h: 150) { BenthosArt.krinakrabbe($0) },
+            .init(name: "rodpolse", w: 320, h: 120) { BenthosArt.rodpolse($0) },
             .init(name: "pigghaa", w: 720, h: 230) { FishArt.pigghaa($0) },
             .init(name: "haakjerring", w: 1024, h: 276) { FishArt.haakjerring($0) },
             .init(name: "breiflabb", w: 640, h: 352) { FishArt.breiflabb($0) },
@@ -109,15 +122,13 @@ enum Species {
             d.append(.init(name: "taskekrabbe-\(f)", w: 380, h: 170) { BenthosArt.taskekrabbe($0, frame: f) })
         }
         for s in all {
-            d.append(.init(name: "cap-\(s.key)", w: 1150, h: 96) { a in caption(a, s, english: english) })
+            d.append(.init(name: "cap-\(s.key)", w: captionWidth(s, english: english), h: 96) { a in caption(a, s, english: english) })
         }
         return d
     }
 
-    private static func caption(_ a: Art, _ s: SpeciesInfo, english: Bool) {
-        // Sizes in cell pixels, converted to the cell's 1000-unit space.
-        let px = 1 / a.k
-        let c = a.ctx
+    /// Caption text, with fonts sized in cell pixels; `px` converts pixels to drawing units.
+    private static func captionLine(_ s: SpeciesInfo, english: Bool, px: Double) -> CTLine {
         let head = CTFontCreateWithName("AvenirNext-Medium" as CFString, 50 * px, nil)
         let sub = CTFontCreateWithName("IowanOldStyle-Italic" as CFString, 44 * px, nil)
         let text = NSMutableAttributedString(string: english ? s.english : s.norsk, attributes: [
@@ -129,8 +140,20 @@ enum Species {
             kCTFontAttributeName as NSAttributedString.Key: sub,
             kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.76, green: 0.85, blue: 0.85, alpha: 0.95),
         ]))
-        let line = CTLineCreateWithAttributedString(text)
-        let width = min(1100 * px, Double(CTLineGetTypographicBounds(line, nil, nil, nil)))
+        return CTLineCreateWithAttributedString(text)
+    }
+
+    /// Cell width that fits the text plus the left inset and the scrim's soft edge.
+    private static func captionWidth(_ s: SpeciesInfo, english: Bool) -> Int {
+        let w = CTLineGetTypographicBounds(captionLine(s, english: english, px: 1), nil, nil, nil)
+        return Int(w.rounded(.up)) + 26 + 70
+    }
+
+    private static func caption(_ a: Art, _ s: SpeciesInfo, english: Bool) {
+        let px = 1 / a.k
+        let c = a.ctx
+        let line = captionLine(s, english: english, px: px)
+        let width = Double(CTLineGetTypographicBounds(line, nil, nil, nil))
         let x0 = 26 * px
         // Soft scrim keeps the text legible over bright sand.
         a.softDot(x0 + width / 2, a.unitH * 0.5, width / 2 + 40 * px, C3(0.01, 0.07, 0.10), 0.5, sy: (a.unitH * 0.62) / (width / 2 + 40 * px))

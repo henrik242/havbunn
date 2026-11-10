@@ -434,6 +434,96 @@ enum FishArt {
     }
 
     /// Plaice seen from above at a low angle, both eyes on the upper side.
+    /// Goldsinny wrasse: small, slim, red-brown to gold, with a dark spot on top of the tail stalk
+    /// and another at the front of the dorsal fin.
+    static func bergnebb(_ a: Art) {
+        let back = hex(0x8a4a24), side = hex(0xc0803f), belly = hex(0xe8c58a)
+        wrasseBody(a, shader: { _, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.5)
+            c *= 0.9 + 0.2 * artNoise.fbm(x * 0.02, y * 0.03, 3)
+            c *= 1 - scales(x, y, size: 24) * 0.12
+            return rgba(c * roundLight(v))
+        }, finC: hex(0x9a4a22), finD: hex(0xcf8a48))
+        a.disc(150, 172, 24, hex(0x1a120c), 0.9)
+        a.disc(745, 92, 18, hex(0x1a120c), 0.8)
+        a.fin(base: [(705, 256), (705, 320)], edge: [(600, 262), (570, 310), (612, 368)], root: hex(0xb06a34), tip: hex(0xd8a066), rays: 9)
+        gill(a, 792, 140, 372, bow: 40)
+        a.line([(978, 262), (940, 271), (905, 276)], hex(0x2a1608), 0.6, 4)
+        a.eye(872, 190, 24, iris: hex(0xc58a3a))
+    }
+
+    /// Tusk: a long cod relative with one continuous dorsal fin, a rounded tail, pale-edged fins
+    /// and a chin barbel.
+    static func brosme(_ a: Art) {
+        let finC = hex(0x4a3524), finD = hex(0x6d5238), rim = hex(0xe3dccb)
+        a.fin(base: [(80, 150), (60, 165), (80, 180)], edge: [(8, 95), (0, 165), (8, 235)], root: finC, tip: finD, alpha: 0.85, rays: 14)
+        a.line([(10, 98), (2, 165), (10, 232)], rim, 0.75, 5)
+        let dorsalEdge: [XY] = [(85, 112), (300, 66), (560, 50), (770, 66)]
+        a.fin(base: [(90, 140), (300, 104), (560, 86), (760, 92)], edge: dorsalEdge, root: finC, tip: finD, alpha: 0.85, rays: 40)
+        a.line(dorsalEdge, rim, 0.7, 4)
+        let analEdge: [XY] = [(85, 215), (300, 252), (570, 262)]
+        a.fin(base: [(90, 190), (300, 222), (560, 236)], edge: analEdge, root: finC, tip: finD, alpha: 0.85, rays: 28)
+        a.line(analEdge, rim, 0.7, 4)
+        let top: [XY] = [(78, 148), (200, 124), (400, 96), (600, 84), (760, 86), (880, 104), (950, 130), (990, 160)]
+        let bottom: [XY] = [(78, 182), (200, 206), (400, 230), (600, 240), (760, 238), (880, 220), (950, 196), (990, 172)]
+        let back = hex(0x5a3e27), side = hex(0x8a6a48), belly = hex(0xd9c8a6)
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.55)
+            c = mix(c, c * 0.72, smooth(0.5, 0.7, artNoise.fbm(x * 0.02, y * 0.04, 3)) * (1 - smooth(0.5, 0.75, v)))
+            c *= 1 - scales(x, y, size: 10) * 0.05
+            return rgba(c * roundLight(v))
+        }
+        a.fin(base: [(800, 168), (800, 200)], edge: [(720, 176), (700, 206), (735, 232)], root: finC, tip: finD, alpha: 0.75, rays: 8)
+        gill(a, 828, 100, 228, bow: 26)
+        a.line([(990, 170), (955, 182), (925, 180)], hex(0x241810), 0.5, 4)
+        a.line([(948, 196), (944, 222), (936, 236)], hex(0xbfae8a), 1, 3.5)
+        a.eye(920, 138, 13, iris: hex(0x9a8656))
+    }
+
+    /// Rabbit fish: a big blunt head with large green eyes, broad wing-like pectorals, a tall first
+    /// dorsal spine and a body tapering to a long thin tail.
+    static func havmus(_ a: Art) {
+        a.taper([(400, 196), (250, 202), (120, 206), (0, 200)], 26, 2, hex(0x8d8a80))
+        a.fin(base: [(420, 178), (560, 150), (720, 108)], edge: [(420, 162), (560, 126), (720, 88)], root: hex(0x6e6458), tip: hex(0x9a9084), alpha: 0.7, rays: 20)
+        let top: [XY] = [(380, 188), (480, 152), (600, 120), (720, 98), (820, 94), (900, 112), (960, 150), (990, 190)]
+        let bottom: [XY] = [(380, 204), (480, 228), (600, 252), (720, 262), (820, 262), (900, 250), (960, 230), (990, 206)]
+        let back = hex(0x7c6a5a), side = hex(0xb7aa98), belly = hex(0xd8d2c8)
+        a.body(top: top, bottom: bottom) { t, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.5)
+            let marble = smooth(0.48, 0.62, artNoise.fbm(x * 0.012, y * 0.05, 3))
+            c = mix(c, hex(0x5a4636), marble * 0.55 * (1 - smooth(0.4, 0.7, v)))
+            c += C3(0.05, 0.08, 0.10) * pow(clamp01(1 - abs(v - 0.45) * 3), 3)
+            _ = t
+            return rgba(c * roundLight(v))
+        }
+        a.fill([(760, 98), (790, 18), (816, 96)], hex(0x6e6458), 0.95)
+        a.line([(782, 98), (792, 16)], hex(0xe7e1d6), 0.9, 4, smooth: false)
+        a.fin(base: [(770, 200), (790, 244)], edge: [(640, 290), (560, 340), (700, 336)], root: hex(0x7c7064), tip: hex(0xa8a092), alpha: 0.8, rays: 12)
+        for (y0, y1) in [(170.0, 150.0), (200.0, 196.0)] {
+            a.line([(980, y0), (930, y1), (860, y1 + 6)], hex(0xe9e4da), 0.35, 3)
+        }
+        a.eye(905, 152, 30, iris: hex(0x4f8a5a))
+    }
+
+    /// Lemon sole, seen from above at a low angle: small head, smooth mottled yellow-brown skin.
+    static func lomre(_ a: Art) {
+        let fringe = hex(0x7a6440)
+        a.fin(base: [(140, 170), (120, 195), (140, 220)], edge: [(10, 120), (0, 195), (10, 270)], root: fringe, tip: hex(0xa48c5c), rays: 12)
+        a.fin(base: [(150, 165), (800, 66)], edge: [(140, 112), (460, 14), (810, 30)], root: fringe, tip: hex(0xa48c5c), rays: 40)
+        a.fin(base: [(150, 225), (800, 335)], edge: [(140, 280), (460, 388), (810, 375)], root: fringe, tip: hex(0xa48c5c), rays: 40)
+        let top: [XY] = [(135, 172), (260, 124), (450, 76), (640, 60), (820, 78), (920, 122), (975, 188)]
+        let bottom: [XY] = [(135, 220), (260, 264), (450, 318), (640, 342), (820, 322), (920, 272), (975, 206)]
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = mix(hex(0x957d4c), hex(0xa68f5a), v)
+            c = mix(c, hex(0x5e4a2c), smooth(0.52, 0.7, artNoise.fbm(x * 0.03, y * 0.03 + 3, 3)) * 0.6)
+            c = mix(c, hex(0xd8c79c), spots(x, y, cell: 46, radius: 6, keep: 0.35) * 0.6)
+            return rgba(c * (0.82 + 0.24 * roundLight(v)))
+        }
+        a.line([(975, 192), (958, 206), (936, 210)], hex(0x2e2412), 0.5, 4)
+        a.eye(905, 146, 12, iris: hex(0xb79a50))
+        a.eye(915, 182, 11, iris: hex(0xb79a50))
+    }
+
     static func rodspette(_ a: Art) {
         let fringe = hex(0x7d6a42)
         a.fin(base: [(140, 170), (120, 195), (140, 220)], edge: [(10, 120), (0, 195), (10, 270)], root: fringe, tip: hex(0xa68f5d), rays: 12)

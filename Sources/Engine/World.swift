@@ -307,6 +307,15 @@ final class World {
             guard let s = findSpot(z: 3.4...10, rock: 0...0.2) else { continue }
             add("kamskjell", "kamskjell", spot: s, height: rng.float(0.06, 0.09), mode: 0, amp: 0, shadowW: 0.09)
         }
+        // Squat lobsters keep to crevices at the reef foot; sea cucumbers lie on the soft bottom.
+        for _ in 0..<5 {
+            guard let s = findSpot(z: 4...10, rock: 0.4...0.8) else { continue }
+            add("krinakrabbe", "krinakrabbe", spot: s, height: rng.float(0.09, 0.12), mode: 0, amp: 0, shadowW: 0.07)
+        }
+        for _ in 0..<3 {
+            guard let s = findSpot(z: 4...9, rock: 0...0.08) else { continue }
+            add("rodpolse", "rodpolse", spot: s, height: rng.float(0.08, 0.1), mode: 0, amp: 0, shadowW: 0.14)
+        }
     }
 
     private func populateSwimmers() {
@@ -317,6 +326,8 @@ final class World {
             .init(key: "berggylt", length: 0.38, speed: 0.18, zr: 3.9...10, alt: 0.3...1.4, amp: 0.2, wave: 6, count: 2, hover: 0.7),
             .init(key: "blaastaal", length: 0.26, speed: 0.26, zr: 3.8...9, alt: 0.3...1.5, amp: 0.24, wave: 6, count: 2, hover: 0.5),
             .init(key: "rognkjeks", length: 0.34, speed: 0.10, zr: 3.8...9, alt: 0.15...0.9, amp: 0.16, wave: 5, count: 1, hover: 0.9),
+            .init(key: "bergnebb", length: 0.15, speed: 0.22, zr: 3.8...8, alt: 0.15...0.9, amp: 0.24, wave: 6, count: 5, hover: 0.6),
+            .init(key: "brosme", length: 0.6, speed: 0.12, zr: 4.5...11, alt: 0.15...0.7, amp: 0.2, wave: 7, count: 2, hover: 0.85),
             .init(key: "pigghaa", length: 0.95, speed: 0.55, zr: 5...15, alt: 0.9...3.2, amp: 0.45, wave: 7.5, count: 2),
         ]
         for spec in loneSpecs {
@@ -417,6 +428,7 @@ final class World {
         }
         addRester("breiflabb", length: 0.85, mode: 1, amp: 0.02, glide: 0, rest: (9999, 9999), z: 4.3...7, rock: 0.05...0.3, lift: -0.03)
         addRester("rodspette", length: 0.32, mode: 3, amp: 0.05, glide: 0.4, rest: (15, 60), z: 3.6...7, rock: 0...0.08, lift: 0)
+        addRester("lomre", length: 0.3, mode: 3, amp: 0.05, glide: 0.35, rest: (20, 70), z: 4...8, rock: 0...0.08, lift: 0)
         addRester("piggskate", length: 0.6, mode: 3, amp: 0.05, glide: 0.45, rest: (25, 90), z: 4...9, rock: 0...0.12, lift: 0)
         addRester("steinbit", length: 0.7, mode: 1, amp: 0.08, glide: 0.15, rest: (40, 120), z: 4...8, rock: 0.3...0.7, lift: 0)
 
@@ -595,9 +607,12 @@ final class World {
         } else {
             rareTimer -= dt
             if rareTimer <= 0 {
-                let shark = rng.chance(0.3)
-                let spec = shark
+                // Salmon passes most often; the Greenland shark and rabbit fish come up from deeper water.
+                let roll = rng.unit()
+                let spec = roll < 0.25
                     ? SwimmerSpec(key: "haakjerring", length: 3.2, speed: 0.34, zr: 11...16, alt: 1.5...3, amp: 0.18, wave: 5, count: 1)
+                    : roll < 0.5
+                    ? SwimmerSpec(key: "havmus", length: 0.9, speed: 0.22, zr: 7...12, alt: 0.6...2.0, amp: 0.2, wave: 5, count: 1)
                     : SwimmerSpec(key: "laks", length: 0.8, speed: 0.95, zr: 6...12, alt: 2.5...6, amp: 0.3, wave: 6.5, count: 1)
                 let z = rng.float(spec.zr.lowerBound, spec.zr.upperBound)
                 let dir: Float = rng.chance(0.5) ? 1 : -1
@@ -942,7 +957,7 @@ final class World {
             // A thin pointer from the start of the text to the animal, stopping just short of it.
             if let p = captionSubject?(), count + 2 <= capacity {
                 let nx = screenX(p.x, p.z), ny = horizon + (p.y - camY) * focal / p.z
-                let textLeft = cx - hw / aspect + 2 * hw / aspect * (26.0 / 1150.0)
+                let textLeft = cx - hw / aspect + 2 * hw / aspect * (26.0 / (frame.aspect * 96))
                 let below = cy < ny
                 let start = SIMD2<Float>((textLeft + 0.012) * aspect, cy + (below ? hh * 0.55 : -hh * 0.55))
                 var end = SIMD2<Float>(nx * aspect, ny)

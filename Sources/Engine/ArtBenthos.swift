@@ -153,6 +153,63 @@ enum BenthosArt {
         a.disc(cx + 34, cy + 92, 6, hex(0x120d0a), 0.95, sy: 0.6)
     }
 
+    /// Spiny squat lobster from the front and above: a flattened red carapace with blue
+    /// transverse lines, long spiny claws held forward, tail tucked under.
+    static func krinakrabbe(_ a: Art) {
+        let red = hex(0xb8352a), blue = hex(0x3a7ad6)
+        let cx = 500.0, cy = 380.0
+        for side in [-1.0, 1.0] {
+            for i in 0..<3 {
+                let x0 = cx + side * (110 + Double(i) * 30), y0 = cy + 40 + Double(i) * 30
+                a.line([(x0, y0), (x0 + side * 120, y0 - 30), (x0 + side * 170, y0 + 80)], red * 0.8, 1, 16, smooth: false)
+            }
+            // Long claws reaching forward and out.
+            let arm: [XY] = [(cx + side * 100, cy - 40), (cx + side * 220, cy - 170), (cx + side * 330, cy - 300)]
+            a.taper(arm, 46, 30, red)
+            for t in stride(from: 0.2, through: 0.9, by: 0.23) {
+                let p = (arm[0].0 + (arm[2].0 - arm[0].0) * t, arm[0].1 + (arm[2].1 - arm[0].1) * t)
+                a.line([(p.0 - 14, p.1), (p.0 + 14, p.1 + 4)], blue, 0.85, 6, smooth: false)
+            }
+            let tip = arm[2]
+            a.taper([tip, (tip.0 + side * 40, tip.1 - 120)], 30, 6, red * 1.1)
+            a.taper([tip, (tip.0 + side * 80, tip.1 - 90)], 26, 6, red * 0.9)
+        }
+        a.polar(cx: cx, cy: cy, sy: 0.9, maxR: 140, radius: { th in 128 + 6 * abs(sin(th * 9)) }) { r, _, x, y in
+            var c = mix(red * 1.12, red * 0.75, r)
+            let band = clamp01(1 - abs(sin(y * 0.11)) * 4) * (1 - smooth(0.85, 1, r))
+            c = mix(c, blue, band * 0.85)
+            c *= 0.9 + 0.2 * artNoise.fbm(x * 0.04, y * 0.04, 2)
+            return rgba(c)
+        }
+        a.disc(cx - 40, cy - 120, 12, hex(0x111111))
+        a.disc(cx + 40, cy - 120, 12, hex(0x111111))
+    }
+
+    /// Red sea cucumber lying on the bottom: a warty sausage, red above and paler below, with
+    /// conical papillae along the back and a fringe of tube feet.
+    static func rodpolse(_ a: Art) {
+        let top: [XY] = [(40, 220), (150, 150), (400, 122), (700, 126), (900, 160), (970, 222)]
+        let bottom: [XY] = [(40, 252), (150, 292), (400, 312), (700, 306), (900, 286), (970, 248)]
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = mix(hex(0xa8402a), hex(0xe2a070), smooth(0.4, 1, v))
+            c *= 0.9 + 0.2 * artNoise.fbm(x * 0.03, y * 0.05, 3)
+            return rgba(c * (0.75 + 0.35 * roundLight(v)))
+        }
+        var rng = a.rng
+        for _ in 0..<26 {
+            let x = rng.range(120, 920)
+            let yTop = 150 - 60 * sin((x - 40) / 930 * .pi) + 30
+            let h = rng.range(20, 44)
+            a.taper([(x, yTop + 8), (x + rng.range(-6, 6), yTop - h)], 22, 3, hex(0xc5583a))
+            a.disc(x, yTop - h, 4, hex(0xf4d0b0), 0.9)
+        }
+        for i in 0..<40 {
+            let x = 90 + Double(i) * 21
+            a.disc(x, 302 + 8 * sin(Double(i)), 7, hex(0xf2c8a8), 0.7)
+        }
+        a.rng = rng
+    }
+
     // MARK: echinoderms
 
     static func korstroll(_ a: Art) {
