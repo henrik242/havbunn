@@ -7,6 +7,7 @@ struct Uniforms {
     float2 viewport;
     float2 worldHalf;
     float2 extra;   // focus x in ndc, light level
+    float4 flow;    // current (-1..1, + is toward +x), its integral over time
 };
 
 struct Sprite {
@@ -365,7 +366,7 @@ vertex SpriteOut spriteVS(uint vid [[vertex_id]],
         shade = 1.0 + clamp(amp * (0.3 + t * 1.6) * cos(ph) * 0.45, -0.30, 0.30);
     } else if (mode == 2) {     // plant, anchored at base
         float t = 1.0 - g.y;
-        float bend = amp * pow(t, 1.5) * (sin(phase + t * 2.4) + 0.4 * sin(phase * 1.7 + t * 6.0 + s.pos.x));
+        float bend = amp * pow(t, 1.5) * (0.45 * sin(phase + t * 2.4) + 0.2 * sin(phase * 1.7 + t * 6.0 + s.pos.x) + 1.4 * U.flow.x);
         p.x += bend * 2.0 * hh;
         p.x += s.look.w * sin(g.y * 16.0 + phase * 1.6) * t * hw;
         shade = 1.0 + 0.14 * sin(phase + t * 5.0 + g.x * 3.0);
@@ -386,7 +387,7 @@ vertex SpriteOut spriteVS(uint vid [[vertex_id]],
         p.y *= 1.0 - 0.07 * pulse * w;
     } else if (mode == 5) {     // anemone or soft crown
         float t = 1.0 - g.y;
-        p.x += amp * pow(t, 1.8) * sin(phase * 0.6 + s.pos.x) * 2.0 * hh;
+        p.x += amp * pow(t, 1.8) * (0.5 * sin(phase * 0.6 + s.pos.x) + 1.2 * U.flow.x) * 2.0 * hh;
         float crown = smoothstep(0.5, 0.0, g.y);
         p.x += sin(g.x * 22.0 + phase * 1.9) * crown * hw * 0.035;
         p.y += cos(g.x * 17.0 + phase * 1.4) * crown * hh * 0.022;
@@ -395,6 +396,9 @@ vertex SpriteOut spriteVS(uint vid [[vertex_id]],
     SpriteOut o;
     float2 ndc;
     if (mode == 9) {            // screen space, pos.xy in ndc
+        // Rotation happens in square units, so pointers keep their angle at any aspect.
+        float cr = cos(s.pos.w), sr = sin(s.pos.w);
+        p = float2(p.x * cr - p.y * sr, p.x * sr + p.y * cr);
         ndc = s.pos.xy + float2(p.x / U.aspect, p.y);
         o.world = float3(0, 0, 0);
         o.isFlat = 1.0;
@@ -485,8 +489,9 @@ vertex SnowOut snowVS(uint vid [[vertex_id]], constant Uniforms &U [[buffer(0)]]
     float2 r3 = hash22(float2(id, 57.0));
     float z = mix(2.0, 28.0, r2.x * r2.x);
     float t = U.time;
-    float fx = fract(r1.x + t * (0.0035 + 0.003 * r3.x) / (0.3 + z * 0.06) + 0.012 * sin(t * 0.25 + id));
-    float fy = fract(r1.y - t * (0.006 + 0.008 * r3.y) / (0.4 + z * 0.07) + 0.006 * sin(t * 0.33 + id * 1.7));
+    // Snow drifts with the shared current and barely sinks; eddies are a field, not per flake.
+    float fx = fract(r1.x + (U.flow.y * 0.05 + t * 0.0006 * (r3.x - 0.5)) * U.focal / (z * U.aspect) + 0.008 * sin(t * 0.13 + 6.0 * r1.y));
+    float fy = fract(r1.y - t * (0.0012 + 0.0016 * r3.y) * U.focal / z + 0.005 * sin(t * 0.11 + 5.0 * r1.x));
     float2 ndc = float2(fx, fy) * 2.2 - 1.1;
     SnowOut o;
     o.position = float4(ndc, 0, 1);
@@ -510,6 +515,48 @@ fragment float4 snowFS(SnowOut in [[stage_in]],
     float2 suv = float2(in.ndc.x * 0.5 + 0.5, 0.5 - in.ndc.y * 0.5);
     if (depth.sample(nearestClamp, suv).r < in.z) discard_fragment();
     return float4(min(waterColor(in.ndc.y) * 2.4 + 0.03, 1.0) * a, a);
+}
+
+// ---- mysids: small crustaceans hanging over the rock in clouds, darting then holding ----
+
+vertex SnowOut mysidVS(uint vid [[vertex_id]],
+                       constant Uniforms &U [[buffer(0)]],
+                       constant float4 *anchors [[buffer(1)]],
+                       constant uint &anchorCount [[buffer(2)]]) {
+    float4 a = anchors[vid % max(anchorCount, 1u)];
+    float id = float(vid);
+    float2 h = hash22(float2(id, 131.0));
+    float ph = U.time * (0.22 + 0.3 * h.x) + h.y * 7.0;
+    float cyc = floor(ph), fr = fract(ph);
+    float3 offA = (float3(hash22(float2(id, cyc)), hash21(float2(id + 500.0, cyc))) - 0.5) * float3(2.0, 1.0, 2.0);
+    float3 offB = (float3(hash22(float2(id, cyc + 1.0)), hash21(float2(id + 500.0, cyc + 1.0))) - 0.5) * float3(2.0, 1.0, 2.0);
+    float3 w = a.xyz + mix(offA, offB, smoothstep(0.0, 0.1, fr)) * a.w + float3(U.flow.x * 0.08, 0.0, 0.0);
+    float z = max(w.z, 1.0);
+    float2 ndc = float2(w.x * U.focal / (z * U.aspect), U.horizon + (w.y - U.camY) * U.focal / z);
+    SnowOut o;
+    o.position = float4(ndc, 0, 1);
+    o.ndc = ndc;
+    o.z = z;
+    o.size = clamp(0.012 * U.focal / z * U.viewport.y * 0.5, 1.3, 4.0);
+    o.soft = 0.0;
+    o.alpha = 0.32 * exp(-z * 0.06);
+    return o;
+}
+
+// ---- final grade: deeper blacks, soft highlight rolloff, shared grain ----
+
+fragment float4 compositeFS(FSOut in [[stage_in]], constant Uniforms &U [[buffer(0)]], texture2d<float> scene [[texture(0)]]) {
+    float3 c = scene.read(uint2(in.position.xy)).rgb;
+    float Y = dot(c, float3(0.2126, 0.7152, 0.0722));
+    float Y2 = Y * Y / (Y + 0.015) * 1.015;
+    Y2 = Y2 < 0.72 ? Y2 : 0.72 + 0.28 * (1.0 - exp(-(Y2 - 0.72) / 0.28));
+    c *= Y2 / max(Y, 1e-4);
+    c = mix(float3(Y2), c, 0.93);
+    c += (Y2 - 0.3) * float3(0.012, 0.0, -0.010);
+    float frame = floor(U.time * 24.0);
+    c += (hash21(floor(in.position.xy * 0.5) + frame * 17.0) - 0.5) * (3.0 / 255.0) * (1.0 - Y2 * 0.6);
+    c += (hash21(in.position.xy + frame * 3.1) - 0.5) / 255.0;
+    return float4(saturate(c), 1.0);
 }
 
 // ---- overlay: god rays, vignette, fade ----
@@ -536,7 +583,7 @@ fragment float4 overlayFS(FSOut in [[stage_in]], constant Uniforms &U [[buffer(0
 
     float2 v = float2(p.x, p.y * 1.05);
     float vig = smoothstep(0.7, 1.6, length(v * float2(min(1.0, 1.6 / U.aspect), p.y < 0.0 ? 1.2 : 1.0))) * 0.48;
-    float noise = hash21(in.position.xy + fract(t) * 311.0) * 1.6 / 255.0;
+    float noise = 0.0;  // grain and dither live in compositeFS
     float alpha = 1.0 - (1.0 - vig) * U.fade;
     return float4((rays + noise) * U.fade, alpha);
 }

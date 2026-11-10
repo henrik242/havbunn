@@ -8,6 +8,7 @@ struct Uniforms {
     var viewport = SIMD2<Float>(1, 1)
     var worldHalf = SIMD2<Float>(45, 90)
     var extra = SIMD2<Float>(0, 1)   // focus x in ndc, light level
+    var flow = SIMD4<Float>(0, 0, 0, 0)  // current, its integral
 }
 
 struct Sprite {
@@ -24,6 +25,8 @@ public final class Renderer {
     enum RenderError: Error { case setup(String) }
 
     public static let pixelFormat = MTLPixelFormat.bgra8Unorm
+    /// The scene renders in float so the final grade has headroom and no banding.
+    private static let sceneFormat = MTLPixelFormat.rg11b10Float
     private static let maxSprites = 1400
     private static let framesInFlight = 3
     private static let causticSize = 512
@@ -32,6 +35,8 @@ public final class Renderer {
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let bakePipeline, causticPipeline, backdropPipeline, spritePipeline, snowPipeline, overlayPipeline: MTLRenderPipelineState
+    private let mysidPipeline, compositePipeline, captionPipeline: MTLRenderPipelineState
+    private var sceneTexture: MTLTexture?
     private let gridVertices, gridIndices: MTLBuffer
     private let gridIndexCount: Int
     private var spriteBuffers: [MTLBuffer] = []
@@ -48,6 +53,8 @@ public final class Renderer {
     private var causticClock: Double = 1
 
     public var showNames = true
+    /// Caption language; read when the atlas is built in `prepare`.
+    public var english = false
     public private(set) var isPrepared = false
     public var preparedAspect: Float { uniforms.aspect }
 
@@ -73,13 +80,16 @@ public final class Renderer {
             }
             return try device.makeRenderPipelineState(descriptor: d)
         }
-        let fmt = Renderer.pixelFormat
+        let fmt = Renderer.pixelFormat, scene = Renderer.sceneFormat
         bakePipeline = try make("fullscreenVS", "bakeFS", formats: [.rgba8Unorm, .r32Float], blend: false)
         causticPipeline = try make("fullscreenVS", "causticFS", formats: [.r8Unorm], blend: false)
-        backdropPipeline = try make("fullscreenVS", "backdropFS", formats: [fmt], blend: false)
-        spritePipeline = try make("spriteVS", "spriteFS", formats: [fmt], blend: true)
-        snowPipeline = try make("snowVS", "snowFS", formats: [fmt], blend: true)
-        overlayPipeline = try make("fullscreenVS", "overlayFS", formats: [fmt], blend: true)
+        backdropPipeline = try make("fullscreenVS", "backdropFS", formats: [scene], blend: false)
+        spritePipeline = try make("spriteVS", "spriteFS", formats: [scene], blend: true)
+        snowPipeline = try make("snowVS", "snowFS", formats: [scene], blend: true)
+        mysidPipeline = try make("mysidVS", "snowFS", formats: [scene], blend: true)
+        overlayPipeline = try make("fullscreenVS", "overlayFS", formats: [scene], blend: true)
+        compositePipeline = try make("fullscreenVS", "compositeFS", formats: [fmt], blend: false)
+        captionPipeline = try make("spriteVS", "spriteFS", formats: [fmt], blend: true)
 
         // Unit grid shared by all sprites; deformation happens in the vertex shader.
         let n = Renderer.gridCells
@@ -115,7 +125,7 @@ public final class Renderer {
         uniforms.fogK = 0.075 + 0.03 * Float(seed % 101) / 100
         uniforms.worldHalf = SIMD2(45, 90)
 
-        let atlas = Atlas.shared(device: device)
+        let atlas = Atlas.shared(device: device, english: english)
         let terrain = Terrain(seed: seed, aspect: aspect, focal: uniforms.focal)
         uniforms.extra.x = terrain.focusNdc
         self.atlas = atlas
@@ -207,6 +217,7 @@ public final class Renderer {
         // Slow cloud passing far above.
         uniforms.extra.y = 0.92 + 0.06 * sin(time * 0.034) + 0.04 * sin(time * 0.0097 + 1.3)
         if fadeOverride >= 0 { uniforms.fade = fadeOverride }
+        uniforms.flow = SIMD4(world.flow, world.flowIntegral, 0, 0)
         var u = uniforms
 
         // Caustic tile, refreshed at 30 Hz.
@@ -233,8 +244,17 @@ public final class Renderer {
         let ptr = buffer.contents().bindMemory(to: Sprite.self, capacity: Renderer.maxSprites)
         let count = world.fillSprites(into: ptr, capacity: Renderer.maxSprites, showNames: showNames)
 
+        if sceneTexture?.width != texture.width || sceneTexture?.height != texture.height {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Renderer.sceneFormat, width: texture.width,
+                                                             height: texture.height, mipmapped: false)
+            d.usage = [.renderTarget, .shaderRead]
+            d.storageMode = .private
+            sceneTexture = device.makeTexture(descriptor: d)
+        }
+        guard let sceneTex = sceneTexture else { finish(cmd); return }
+
         let rp = MTLRenderPassDescriptor()
-        rp.colorAttachments[0].texture = texture
+        rp.colorAttachments[0].texture = sceneTex
         rp.colorAttachments[0].loadAction = .clear
         rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
         rp.colorAttachments[0].storeAction = .store
@@ -254,8 +274,8 @@ public final class Renderer {
         enc.setFragmentTexture(atlas.texture, index: 0)
         enc.setFragmentTexture(depth, index: 1)
         enc.setFragmentTexture(caustic, index: 2)
-        // The caption, when present, is the last instance and is drawn after the overlay.
-        let sceneCount = world.hasCaption ? count - 1 : count
+        // Caption and pointer, when present, are the last instances and are drawn after the overlay.
+        let sceneCount = count - world.overlaySprites
         if sceneCount > 0 {
             enc.drawIndexedPrimitives(type: .triangle, indexCount: gridIndexCount, indexType: .uint16,
                                       indexBuffer: gridIndices, indexBufferOffset: 0, instanceCount: sceneCount)
@@ -265,19 +285,42 @@ public final class Renderer {
         enc.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
         enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: 1500)
 
+        var anchors = world.mysidAnchors
+        if !anchors.isEmpty {
+            var n = UInt32(anchors.count)
+            enc.setRenderPipelineState(mysidPipeline)
+            enc.setVertexBytes(&anchors, length: MemoryLayout<SIMD4<Float>>.stride * anchors.count, index: 1)
+            enc.setVertexBytes(&n, length: 4, index: 2)
+            enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: 90 * anchors.count)
+        }
+
         enc.setRenderPipelineState(overlayPipeline)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-
-        if world.hasCaption {
-            enc.setRenderPipelineState(spritePipeline)
-            enc.setVertexBuffer(gridVertices, offset: 0, index: 0)
-            enc.setVertexBuffer(buffer, offset: 0, index: 1)
-            enc.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 2)
-            enc.drawIndexedPrimitives(type: .triangle, indexCount: gridIndexCount, indexType: .uint16,
-                                      indexBuffer: gridIndices, indexBufferOffset: 0, instanceCount: 1,
-                                      baseVertex: 0, baseInstance: count - 1)
-        }
         enc.endEncoding()
+
+        // Grade into the drawable, then captions on top, ungraded.
+        let fp = MTLRenderPassDescriptor()
+        fp.colorAttachments[0].texture = texture
+        fp.colorAttachments[0].loadAction = .dontCare
+        fp.colorAttachments[0].storeAction = .store
+        guard let fin = cmd.makeRenderCommandEncoder(descriptor: fp) else { finish(cmd); return }
+        fin.setRenderPipelineState(compositePipeline)
+        fin.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
+        fin.setFragmentTexture(sceneTex, index: 0)
+        fin.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        if world.overlaySprites > 0 {
+            fin.setRenderPipelineState(captionPipeline)
+            fin.setVertexBuffer(gridVertices, offset: 0, index: 0)
+            fin.setVertexBuffer(buffer, offset: 0, index: 1)
+            fin.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 2)
+            fin.setFragmentTexture(atlas.texture, index: 0)
+            fin.setFragmentTexture(depth, index: 1)
+            fin.setFragmentTexture(caustic, index: 2)
+            fin.drawIndexedPrimitives(type: .triangle, indexCount: gridIndexCount, indexType: .uint16,
+                                      indexBuffer: gridIndices, indexBufferOffset: 0, instanceCount: world.overlaySprites,
+                                      baseVertex: 0, baseInstance: sceneCount)
+        }
+        fin.endEncoding()
 
         finish(cmd)
     }
@@ -296,6 +339,7 @@ public final class Renderer {
         bakeColor = nil
         bakeDepth = nil
         caustic = nil
+        sceneTexture = nil
     }
 
     public func forceHaakjerring() { world?.forceRareVisitor() }

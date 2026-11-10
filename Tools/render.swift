@@ -1,5 +1,5 @@
 // Offscreen frame renderer for checking the look without the screen saver host.
-// Usage: havbunn-render <Shaders.metal> <out-prefix> [--seed N] [--size WxH] [--warm SECONDS] [--frames N] [--gap SECONDS] [--rare]
+// Usage: havbunn-render <Shaders.metal> <out-prefix> [--seed N] [--size WxH] [--warm SECONDS] [--frames N] [--gap SECONDS] [--rare] [--english] [--atlas]
 import AppKit
 import Foundation
 import Metal
@@ -11,7 +11,7 @@ struct Main {
         guard args.count >= 2 else { fatalError("usage") }
         let lib = URL(fileURLWithPath: args.removeFirst())
         let prefix = args.removeFirst()
-        var seed: UInt64 = 7, w = 2560, h = 1600, warm = 30.0, frames = 1, gap = 5.0, forceRare = false, dumpAtlas = false
+        var seed: UInt64 = 7, w = 2560, h = 1600, warm = 30.0, frames = 1, gap = 5.0, forceRare = false, dumpAtlas = false, english = false
         while !args.isEmpty {
             let a = args.removeFirst()
             switch a {
@@ -24,17 +24,19 @@ struct Main {
             case "--gap": gap = Double(args.removeFirst())!
             case "--rare": forceRare = true
             case "--atlas": dumpAtlas = true
+            case "--english": english = true
             default: fatalError("unknown \(a)")
             }
         }
         guard let device = MTLCreateSystemDefaultDevice() else { fatalError("no metal") }
         let t0 = CFAbsoluteTimeGetCurrent()
         let r = try Renderer(device: device, shaderSource: lib, seed: seed)
+        r.english = english
         r.prepare(width: w, height: h)
         print(String(format: "prepare: %.2fs, atlas used height %d of %d", CFAbsoluteTimeGetCurrent() - t0, Atlas.usedHeight, Atlas.side))
         r.fadeOverride = 1
         if dumpAtlas {
-            let tex = Atlas.shared(device: device).texture
+            let tex = Atlas.shared(device: device, english: english).texture
             var px = [UInt8](repeating: 0, count: Atlas.side * Atlas.side * 4)
             tex.getBytes(&px, bytesPerRow: Atlas.side * 4, from: MTLRegionMake2D(0, 0, Atlas.side, Atlas.side), mipmapLevel: 0)
             let c = CGContext(data: &px, width: Atlas.side, height: Atlas.side, bitsPerComponent: 8, bytesPerRow: Atlas.side * 4,

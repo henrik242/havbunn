@@ -308,10 +308,12 @@ final class Atlas {
     private static let lock = NSLock()
     private static weak var cached: Atlas?
 
-    static func shared(device: MTLDevice) -> Atlas {
+    let english: Bool
+
+    static func shared(device: MTLDevice, english: Bool) -> Atlas {
         lock.lock(); defer { lock.unlock() }
-        if let a = cached, a.texture.device === device { return a }
-        let a = Atlas(device: device)
+        if let a = cached, a.texture.device === device, a.english == english { return a }
+        let a = Atlas(device: device, english: english)
         cached = a
         return a
     }
@@ -321,7 +323,8 @@ final class Atlas {
         return f
     }
 
-    private init(device: MTLDevice) {
+    private init(device: MTLDevice, english: Bool) {
+        self.english = english
         let side = Atlas.side
         let cs = CGColorSpace(name: CGColorSpace.sRGB)!
         let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
@@ -330,7 +333,7 @@ final class Atlas {
         ctx.scaleBy(x: 1, y: -1)
         ctx.interpolationQuality = .high
 
-        let defs = Species.spriteDefs().sorted { $0.h > $1.h }
+        let defs = Species.spriteDefs(english: english).sorted { $0.h > $1.h }
         var x = Atlas.pad, y = Atlas.pad, shelf = 0, seed: UInt64 = 1
         for d in defs {
             if x + d.w + Atlas.pad > side {

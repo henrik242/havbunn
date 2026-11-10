@@ -11,6 +11,7 @@ private let saverLog = Logger(subsystem: "no.havbunn.screensaver", category: "sa
 public final class HavbunnView: ScreenSaverView {
     private static let moduleName = "no.havbunn.screensaver"
     private static let showNamesKey = "showNames"
+    private static let languageKey = "captionLanguage"
 
     private var renderer: Renderer?
     private let metalLayer = CAMetalLayer()
@@ -18,7 +19,8 @@ public final class HavbunnView: ScreenSaverView {
     private var preparing = false
     private var stopped = false
     private var sheet: NSWindow?
-    private var namesCheckbox: NSButton?
+    private var namesPopup: NSPopUpButton?
+    private var lastIdleFrame: CFTimeInterval = 0
     /// Read by the preview tool to confirm frames reach the layer.
     @objc public private(set) var framesPresented = 0
 
@@ -49,12 +51,41 @@ public final class HavbunnView: ScreenSaverView {
         ScreenSaverDefaults(forModuleWithName: moduleName) ?? .standard
     }
 
-    private static var showNames: Bool {
-        get { defaults.object(forKey: showNamesKey) as? Bool ?? true }
+    /// 0 off, 1 automatic, 2 Norwegian, 3 English.
+    private static var captionLanguage: Int {
+        get {
+            if let v = defaults.object(forKey: languageKey) as? Int { return v }
+            return (defaults.object(forKey: showNamesKey) as? Bool ?? true) ? 1 : 0
+        }
         set {
-            defaults.set(newValue, forKey: showNamesKey)
+            defaults.set(newValue, forKey: languageKey)
             defaults.synchronize()
         }
+    }
+
+    private static var englishNames: Bool {
+        switch captionLanguage {
+        case 2: return false
+        case 3: return true
+        default:
+            let lang = Locale.preferredLanguages.first.map { String($0.prefix(2)) } ?? "en"
+            return !["nb", "nn", "no"].contains(lang)
+        }
+    }
+
+    // A host relaunch can leave a view animating with no screen saver running. Inside the
+    // system host, only render properly while the engine is up.
+    private static let inSystemHost = ProcessInfo.processInfo.processName.contains("legacyScreenSaver")
+    private static var engineCheckedAt: CFTimeInterval = -10
+    private static var engineUp = true
+    private static func engineRunning(_ now: CFTimeInterval) -> Bool {
+        if now - engineCheckedAt > 2 {
+            engineCheckedAt = now
+            let up = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.ScreenSaver.Engine").isEmpty
+            if up != engineUp { saverLog.notice("screen saver engine \(up ? "running" : "gone", privacy: .public)") }
+            engineUp = up
+        }
+        return engineUp
     }
 
     public override init?(frame: NSRect, isPreview: Bool) {
@@ -173,11 +204,13 @@ public final class HavbunnView: ScreenSaverView {
         preparing = true
         let seed = UInt64.random(in: 1...UInt64.max)
         // Captions are unreadable at preview size.
-        let names = HavbunnView.showNames && !isPreview
+        let names = HavbunnView.captionLanguage != 0 && !isPreview
+        let english = HavbunnView.englishNames
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 let r = try Renderer(device: device, shaderSource: url, seed: seed)
                 r.showNames = names
+                r.english = english
                 r.prepare(width: w, height: h)
                 DispatchQueue.main.async {
                     guard let self = self, self.preparing else {
@@ -225,6 +258,10 @@ public final class HavbunnView: ScreenSaverView {
         }
 
         let now = CACurrentMediaTime()
+        if HavbunnView.inSystemHost, !isPreview, !HavbunnView.engineRunning(now) {
+            guard now - lastIdleFrame > 1 else { return }
+            lastIdleFrame = now
+        }
         ticks += 1
         report(now)
         if now < nextDrawableAttempt {
@@ -286,10 +323,14 @@ public final class HavbunnView: ScreenSaverView {
                              styleMask: [.titled], backing: .buffered, defer: true)
         panel.isReleasedWhenClosed = false
         let content = panel.contentView!
-        let box = NSButton(checkboxWithTitle: "Show species names", target: nil, action: nil)
-        box.state = HavbunnView.showNames ? .on : .off
-        box.frame = NSRect(x: 24, y: 70, width: 300, height: 24)
-        content.addSubview(box)
+        let label = NSTextField(labelWithString: "Species names:")
+        label.alignment = .right
+        label.frame = NSRect(x: 20, y: 72, width: 110, height: 20)
+        content.addSubview(label)
+        let popup = NSPopUpButton(frame: NSRect(x: 136, y: 66, width: 200, height: 28), pullsDown: false)
+        popup.addItems(withTitles: ["Off", "Automatic", "Norwegian", "English"])
+        popup.selectItem(at: HavbunnView.captionLanguage)
+        content.addSubview(popup)
         let ok = NSButton(title: "OK", target: self, action: #selector(closeSheet))
         ok.keyEquivalent = "\r"
         ok.frame = NSRect(x: 256, y: 16, width: 84, height: ok.intrinsicContentSize.height)
@@ -298,21 +339,30 @@ public final class HavbunnView: ScreenSaverView {
         cancel.keyEquivalent = "\u{1b}"
         cancel.frame = NSRect(x: 160, y: 16, width: 84, height: cancel.intrinsicContentSize.height)
         content.addSubview(cancel)
-        namesCheckbox = box
+        namesPopup = popup
         sheet = panel
         return panel
     }
 
     @objc private func cancelSheet() {
-        namesCheckbox = nil
+        namesPopup = nil
         closeSheet()
     }
 
     @objc private func closeSheet() {
-        if let box = namesCheckbox {
-            let on = box.state == .on
-            HavbunnView.showNames = on
-            renderer?.showNames = on && !isPreview
+        if let popup = namesPopup {
+            let wasEnglish = HavbunnView.englishNames
+            HavbunnView.captionLanguage = popup.indexOfSelectedItem
+            // Apply to every live view; a language change needs new caption textures.
+            for v in HavbunnView.instances.allObjects where !v.stopped {
+                if HavbunnView.englishNames != wasEnglish, let r = v.renderer {
+                    v.renderer = nil
+                    r.tearDown()
+                    v.prepareIfNeeded()
+                } else {
+                    v.renderer?.showNames = HavbunnView.captionLanguage != 0 && !v.isPreview
+                }
+            }
         }
         guard let s = sheet else { return }
         if let parent = s.sheetParent { parent.endSheet(s) } else { s.close() }

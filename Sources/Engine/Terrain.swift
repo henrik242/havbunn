@@ -118,7 +118,8 @@ final class Terrain {
                         let d = d2.squareRoot() / b.r + w
                         if d < 1 {
                             let v = (1 - d * d)
-                            bump = max(bump, b.h * pow(v, 0.85))
+                            // Height capped by width, with gentle shoulders, so no lone spires.
+                            bump = max(bump, min(b.h, b.r * 0.9) * v * v * (3 - 2 * v))
                         }
                     }
                     // Nothing may reach the camera plane, or rays start inside rock.

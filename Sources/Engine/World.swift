@@ -148,7 +148,21 @@ final class World {
     private var captionSubject: (() -> SIMD3<Float>?)?
     private var captionNdc = SIMD2<Float>(-0.6, -0.8)
     private var captionPlaced = false
-    private(set) var hasCaption = false
+    private var captionSize: Float = 0.3
+    /// Sprites at the end of the list that are drawn after the overlay: caption and pointer.
+    private(set) var overlaySprites = 0
+
+    /// Tidal current along the view, reversing over minutes. Plants, drift and fish follow it.
+    private(set) var flow: Float = 0
+    private(set) var flowIntegral: Float = 0
+    private let flowPhase: Float
+    /// Rock tops where mysids hang in clouds: x, y, z, radius.
+    private(set) var mysidAnchors: [SIMD4<Float>] = []
+    private struct Puff { var x, y, z, age, size: Float }
+    private var puffs: [Puff] = []
+    private let puffFrame: AtlasFrame
+    private let pointerLine: AtlasFrame
+    private let pointerHead: AtlasFrame
     private var captionClock: Float = -8
     private var captionGap: Float = 3
     private var captionHistory: [String] = []
@@ -164,10 +178,18 @@ final class World {
         self.aspect = aspect; self.focal = focal; self.camY = camY; self.horizon = horizon
         rng = RNG(seed ^ 0xF15B)
         shadow = atlas.frame("shadow")
+        pointerLine = atlas.frame("pointer-line")
+        pointerHead = atlas.frame("pointer-head")
+        puffFrame = atlas.frame("puff")
+        flowPhase = Float(seed % 360)
         rareTimer = rng.float(120, 300)
         populateFixtures()
         populateSwimmers()
         populateBottom()
+        for _ in 0..<5 {
+            guard let s = findSpot(z: 5...12, rock: 0.55...1.01) else { continue }
+            mysidAnchors.append(SIMD4(s.0, s.1 + rng.float(0.25, 0.6), s.2, rng.float(0.25, 0.45)))
+        }
     }
 
     // MARK: setup
@@ -340,6 +362,13 @@ final class World {
                 x: x, y: rng.float(2.5, 7), z: z,
                 vx: rng.float(-0.05, 0.05), phase: rng.float(0, 6), rate: isLion ? rng.float(0.8, 1.1) : rng.float(1.3, 1.9)))
         }
+        let goose = atlas.frame("sjostikkelsbaer")
+        for _ in 0..<14 {
+            let z = rng.float(3.6, 8)
+            jellies.append(Jelly(key: "sjostikkelsbaer", frame: goose, width: rng.float(0.035, 0.05),
+                                 x: rng.float(-1.1, 1.1) * viewHalfWidth(z), y: rng.float(0.8, 4), z: z,
+                                 vx: rng.float(-0.02, 0.02), phase: rng.float(0, 6), rate: rng.float(0.3, 0.6)))
+        }
     }
 
     private func makeFish(_ spec: SwimmerSpec, onScreen: Bool) -> Fish {
@@ -406,6 +435,10 @@ final class World {
 
     func update(dt: Float) {
         time += dt
+        let tide = sin((time + flowPhase * 10) * 2 * .pi / 600)
+        flow = 0.7 * tide + 0.25 * sin(time * 2 * .pi / 143 + flowPhase)
+        flowIntegral += flow * dt
+        stepPuffs(dt)
         for f in loners { stepLoner(f, dt: dt) }
         for s in schools { stepSchool(s, dt: dt) }
         stepRare(dt)
@@ -466,7 +499,8 @@ final class World {
             // Holding station: barely moving, small corrections.
             f.holdTimer -= dt
             let k = min(1, dt * 0.8)
-            f.vx += (0.02 * sin(time * 0.3 + f.phase) - f.vx) * k
+            // Hold station facing into the current.
+            f.vx += (-flow * 0.03 + 0.01 * sin(time * 0.3 + f.phase) - f.vx) * k
             f.vy += (0.01 * sin(time * 0.23 + f.phase) - f.vy) * k
             f.vz += (0 - f.vz) * k
             integrate(f, dt: dt)
@@ -609,6 +643,7 @@ final class World {
             if r.timer <= 0 || terrain.rock(nx, nz) > (r.key == "steinbit" ? 0.8 : 0.5) || edge || nz < 3.4 || nz > 11 {
                 r.gliding = false
                 r.timer = rng.float(r.restMin, r.restMax)
+                addPuff(r)
                 if edge { r.facing = -r.facing }
             } else {
                 r.x = nx; r.z = nz
@@ -620,6 +655,7 @@ final class World {
             if r.timer <= 0, r.glideSpeed > 0 {
                 r.gliding = true
                 r.timer = rng.float(2.5, 7)
+                addPuff(r)
                 if rng.chance(0.4) { r.facing = -r.facing }
                 r.dirZ = rng.float(-0.1, 0.1)
             }
@@ -629,12 +665,26 @@ final class World {
         r.y = terrain.height(r.x, r.z) + 0.02 + r.height + r.glideAmount * 0.12
     }
 
+    /// Silt kicked up when a ray or flatfish lifts off or settles.
+    private func addPuff(_ r: Rester) {
+        guard puffs.count < 12 else { return }
+        puffs.append(Puff(x: r.x, y: terrain.height(r.x, r.z), z: r.z, age: 0, size: r.length * 0.5))
+    }
+
+    private func stepPuffs(_ dt: Float) {
+        for i in puffs.indices {
+            puffs[i].age += dt
+            puffs[i].x += flow * 0.08 * dt
+        }
+        puffs.removeAll { $0.age > 9 }
+    }
+
     private func stepJelly(_ j: Jelly, dt: Float) {
         j.phase += dt * j.rate
         // Rise on the power stroke, sink in between.
         let thrust = max(0, sin(j.phase)) * 0.09 - 0.022
         j.y += thrust * dt
-        j.x += (j.vx + 0.03 * sin(time * 0.05 + j.z)) * dt
+        j.x += (j.vx + 0.03 * sin(time * 0.05 + j.z) + flow * 0.06) * dt
         let floor = terrain.height(j.x, j.z) + 1.0
         if j.y < floor { j.y += (floor - j.y) * dt * 0.5 }
         if j.y > 8.5 { j.y -= dt * 0.1 }
@@ -647,7 +697,8 @@ final class World {
         if captionClock > World.captionShown + captionGap || captionKey == nil && captionClock > 0 {
             if let pick = pickCaption() {
                 captionKey = pick.0
-                captionSubject = pick.1
+                captionSize = pick.1
+                captionSubject = pick.2
             } else {
                 captionKey = nil
                 captionSubject = nil
@@ -668,7 +719,7 @@ final class World {
             captionNdc = target
             captionPlaced = true
         } else {
-            captionNdc += (target - captionNdc) * min(1, dt / 2.5)
+            captionNdc += (target - captionNdc) * min(1, dt / 0.9)
         }
     }
 
@@ -688,18 +739,18 @@ final class World {
         return false
     }
 
-    private func pickCaption() -> (String, () -> SIMD3<Float>?)? {
+    private func pickCaption() -> (String, Float, () -> SIMD3<Float>?)? {
         // Favor animals that are visible and close, skipping recent ones. Plants count less.
-        var options: [(String, Float, () -> SIMD3<Float>?)] = []
+        var options: [(String, Float, Float, () -> SIMD3<Float>?)] = []
         func vote(_ key: String, _ x: Float, _ y: Float, _ z: Float, _ weight: Float, size: Float, _ pos: @escaping () -> SIMD3<Float>?) {
             // Only name what is big enough to see: about 3% of the screen height or more.
             guard size * focal / z > 0.06, isVisible(x: x, y: y, z: z, margin: 0.75), !captionHistory.contains(key),
                   !hiddenByTerrain(x: x, y: y + size * 0.3, z: z) else { return }
-            options.append((key, weight * max(0.1, 14 - z), pos))
+            options.append((key, weight * max(0.1, 14 - z), size, pos))
         }
         if let r = rare, isVisible(x: r.x, y: r.y, z: r.z, margin: 0.9), !captionHistory.contains(r.spec.key) {
             captionHistory.append(r.spec.key)
-            return (r.spec.key, { [weak self, weak r] in self?.rare === r ? r.map { SIMD3($0.x, $0.y, $0.z) } : nil })
+            return (r.spec.key, r.spec.length * World.creatureScale, { [weak self, weak r] in self?.rare === r ? r.map { SIMD3($0.x, $0.y, $0.z) } : nil })
         }
         for f in loners { vote(f.spec.key, f.x, f.y, f.z, 2, size: f.spec.length * World.creatureScale, { [f] in SIMD3(f.x, f.y, f.z) }) }
         for sc in schools {
@@ -725,8 +776,8 @@ final class World {
             return nil
         }
         // One candidate per species, the best placed.
-        var best: [String: (Float, () -> SIMD3<Float>?)] = [:]
-        for (k, w, p) in options where w > (best[k]?.0 ?? -1) { best[k] = (w, p) }
+        var best: [String: (Float, Float, () -> SIMD3<Float>?)] = [:]
+        for (k, w, size, p) in options where w > (best[k]?.0 ?? -1) { best[k] = (w, size, p) }
         let total = best.values.reduce(0) { $0 + $1.0 }
         var roll = Float(rng.unit()) * total
         for (k, v) in best.sorted(by: { $0.key < $1.key }) {
@@ -734,7 +785,7 @@ final class World {
             if roll <= 0 {
                 captionHistory.append(k)
                 if captionHistory.count >= Species.all.count { captionHistory.removeFirst() }
-                return (k, v.1)
+                return (k, v.1, v.2)
             }
         }
         return nil
@@ -836,10 +887,19 @@ final class World {
             put(Sprite(pos: SIMD4(j.x, j.y, j.z, sin(t * 0.07 + j.z) * 0.14),
                        size: SIMD4(hw, hh, 1, 0),
                        uv: j.frame.uv,
-                       anim: SIMD4(4, j.phase, 0.7, dof(j.z)),
-                       look: SIMD4(0.6, 0.1, 1, 0),
+                       anim: SIMD4(4, j.phase, j.key == "sjostikkelsbaer" ? 0.05 : 0.7, dof(j.z)),
+                       look: SIMD4(j.key == "sjostikkelsbaer" ? 0.5 : 0.6, 0.1, 1, 0),
                        tint: SIMD4(1, 1, 1, 0),
                        light: SIMD4(1, 0.9, 0, 0)))
+        }
+
+        for pf in puffs {
+            let grow = min(1, pf.age / 3)
+            let w = pf.size * (0.4 + 0.8 * grow)
+            let alpha = 0.26 * min(1, pf.age * 3) * (1 - pf.age / 9)
+            put(Sprite(pos: SIMD4(pf.x, pf.y - 0.02, pf.z - 0.05, 0), size: SIMD4(w, w * 0.45, 1, 1),
+                       uv: puffFrame.uv, anim: SIMD4(0, 0, 0, 1.2 + dof(pf.z)), look: SIMD4(alpha, 0, 1, 0),
+                       tint: SIMD4(1, 1, 1, 0), light: SIMD4(1, 0.6, 0, 0)))
         }
 
         drawList.sort { $0.0 > $1.0 }
@@ -849,7 +909,7 @@ final class World {
             count += 1
         }
 
-        hasCaption = false
+        overlaySprites = 0
         if showNames, let key = captionKey, captionClock < World.captionShown, captionPlaced {
             let frame = atlas.frame("cap-\(key)")
             let c = captionClock, fadeIn = smooth(0, 2.5, c), fadeOut = 1 - smooth(World.captionShown - 2.5, World.captionShown, c)
@@ -864,10 +924,39 @@ final class World {
                 size: SIMD4(hw, hh, 1, 0),
                 uv: frame.uv,
                 anim: SIMD4(9, 0, 0, 0),
-                look: SIMD4(fadeIn * fadeOut * 0.85, 0, 0, 0),
+                look: SIMD4(fadeIn * fadeOut * 0.78, 0, 0, 0),
                 tint: SIMD4(1, 1, 1, 0))
             count += 1
-            hasCaption = true
+            overlaySprites = 1
+
+            // A thin pointer from the start of the text to the animal, stopping just short of it.
+            if let p = captionSubject?(), count + 2 <= capacity {
+                let nx = p.x * focal / (p.z * aspect), ny = horizon + (p.y - camY) * focal / p.z
+                let textLeft = cx - hw / aspect + 2 * hw / aspect * (26.0 / 1150.0)
+                let below = cy < ny
+                let start = SIMD2<Float>((textLeft + 0.012) * aspect, cy + (below ? hh * 0.55 : -hh * 0.55))
+                var end = SIMD2<Float>(nx * aspect, ny)
+                let d = end - start
+                let len = (d.x * d.x + d.y * d.y).squareRoot()
+                let margin = max(0.03, captionSize * focal / p.z * 0.4)
+                if len > margin + 0.03 {
+                    let dir = d / len
+                    end = start + dir * (len - margin)
+                    let angle = atan2(dir.y, dir.x)
+                    let alpha = fadeIn * fadeOut * 0.5
+                    let head: Float = 0.010
+                    let lineEnd = end - dir * head
+                    let mid = (start + lineEnd) / 2
+                    let lineLen = ((lineEnd - start) * (lineEnd - start)).sum().squareRoot()
+                    ptr[count] = Sprite(pos: SIMD4(mid.x / aspect, mid.y, 1, angle), size: SIMD4(lineLen / 2, 0.0016, 1, 0),
+                                        uv: pointerLine.uv, anim: SIMD4(9, 0, 0, 0), look: SIMD4(alpha, 0, 0, 0), tint: SIMD4(1, 1, 1, 0))
+                    let hc = end - dir * head
+                    ptr[count + 1] = Sprite(pos: SIMD4(hc.x / aspect, hc.y, 1, angle), size: SIMD4(head, head * 0.8, 1, 0),
+                                            uv: pointerHead.uv, anim: SIMD4(9, 0, 0, 0), look: SIMD4(alpha, 0, 0, 0), tint: SIMD4(1, 1, 1, 0))
+                    count += 2
+                    overlaySprites = 3
+                }
+            }
         }
         return count
     }

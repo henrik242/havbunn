@@ -11,8 +11,9 @@ Needs Xcode. No other dependencies.
     make install      # build and copy to ~/Library/Screen Savers
     make uninstall
 
-Then pick Havbunn in System Settings > Screen Saver. Its options let you turn the
-species names off.
+Then pick Havbunn in System Settings > Screen Saver. Its options set the species names:
+off, automatic (Norwegian when the system language is Norwegian, otherwise English),
+Norwegian or English. Latin names are always shown.
 
     make run          # run the built bundle in a window
     make tools        # also builds build/havbunn-render, an offscreen PNG renderer

@@ -6,48 +6,50 @@ struct SpeciesInfo {
     let key: String
     let norsk: String
     let latin: String
+    let english: String
 }
 
 /// Every organism in the scene. All are native to Norwegian waters.
 enum Species {
     static let all: [SpeciesInfo] = [
-        .init(key: "torsk", norsk: "Torsk", latin: "Gadus morhua"),
-        .init(key: "sei", norsk: "Sei", latin: "Pollachius virens"),
-        .init(key: "lyr", norsk: "Lyr", latin: "Pollachius pollachius"),
-        .init(key: "sild", norsk: "Sild", latin: "Clupea harengus"),
-        .init(key: "makrell", norsk: "Makrell", latin: "Scomber scombrus"),
-        .init(key: "laks", norsk: "Laks", latin: "Salmo salar"),
-        .init(key: "uer", norsk: "Lusuer", latin: "Sebastes viviparus"),
-        .init(key: "berggylt", norsk: "Berggylt", latin: "Labrus bergylta"),
-        .init(key: "blaastaal", norsk: "Blåstål", latin: "Labrus mixtus"),
-        .init(key: "rognkjeks", norsk: "Rognkjeks", latin: "Cyclopterus lumpus"),
-        .init(key: "pigghaa", norsk: "Pigghå", latin: "Squalus acanthias"),
-        .init(key: "haakjerring", norsk: "Håkjerring", latin: "Somniosus microcephalus"),
-        .init(key: "breiflabb", norsk: "Breiflabb", latin: "Lophius piscatorius"),
-        .init(key: "steinbit", norsk: "Gråsteinbit", latin: "Anarhichas lupus"),
-        .init(key: "rodspette", norsk: "Rødspette", latin: "Pleuronectes platessa"),
-        .init(key: "piggskate", norsk: "Piggskate", latin: "Raja clavata"),
-        .init(key: "glassmanet", norsk: "Glassmanet", latin: "Aurelia aurita"),
-        .init(key: "brennmanet", norsk: "Brennmanet", latin: "Cyanea capillata"),
-        .init(key: "hummer", norsk: "Hummer", latin: "Homarus gammarus"),
-        .init(key: "sjokreps", norsk: "Sjøkreps", latin: "Nephrops norvegicus"),
-        .init(key: "taskekrabbe", norsk: "Taskekrabbe", latin: "Cancer pagurus"),
-        .init(key: "korstroll", norsk: "Vanlig korstroll", latin: "Asterias rubens"),
-        .init(key: "solstjerne", norsk: "Piggsolstjerne", latin: "Crossaster papposus"),
-        .init(key: "drobak", norsk: "Drøbakkråkebolle", latin: "Strongylocentrotus droebachiensis"),
-        .init(key: "kraakebolle", norsk: "Rød kråkebolle", latin: "Echinus esculentus"),
-        .init(key: "kamskjell", norsk: "Stort kamskjell", latin: "Pecten maximus"),
-        .init(key: "oskjell", norsk: "O-skjell", latin: "Modiolus modiolus"),
-        .init(key: "sjonellik", norsk: "Sjønellik", latin: "Metridium senile"),
-        .init(key: "dodningehand", norsk: "Dødmannshånd", latin: "Alcyonium digitatum"),
-        .init(key: "oyekorall", norsk: "Øyekorall", latin: "Desmophyllum pertusum"),
-        .init(key: "sjotre", norsk: "Sjøtre", latin: "Paragorgia arborea"),
-        .init(key: "sjofjaer", norsk: "Stor piperenser", latin: "Funiculina quadrangularis"),
-        .init(key: "stortare", norsk: "Stortare", latin: "Laminaria hyperborea"),
-        .init(key: "sukkertare", norsk: "Sukkertare", latin: "Saccharina latissima"),
+        .init(key: "torsk", norsk: "Torsk", latin: "Gadus morhua", english: "Atlantic cod"),
+        .init(key: "sei", norsk: "Sei", latin: "Pollachius virens", english: "Saithe"),
+        .init(key: "lyr", norsk: "Lyr", latin: "Pollachius pollachius", english: "Pollack"),
+        .init(key: "sild", norsk: "Sild", latin: "Clupea harengus", english: "Atlantic herring"),
+        .init(key: "makrell", norsk: "Makrell", latin: "Scomber scombrus", english: "Atlantic mackerel"),
+        .init(key: "laks", norsk: "Laks", latin: "Salmo salar", english: "Atlantic salmon"),
+        .init(key: "uer", norsk: "Lusuer", latin: "Sebastes viviparus", english: "Norway redfish"),
+        .init(key: "berggylt", norsk: "Berggylt", latin: "Labrus bergylta", english: "Ballan wrasse"),
+        .init(key: "blaastaal", norsk: "Blåstål", latin: "Labrus mixtus", english: "Cuckoo wrasse"),
+        .init(key: "rognkjeks", norsk: "Rognkjeks", latin: "Cyclopterus lumpus", english: "Lumpfish"),
+        .init(key: "pigghaa", norsk: "Pigghå", latin: "Squalus acanthias", english: "Spiny dogfish"),
+        .init(key: "haakjerring", norsk: "Håkjerring", latin: "Somniosus microcephalus", english: "Greenland shark"),
+        .init(key: "breiflabb", norsk: "Breiflabb", latin: "Lophius piscatorius", english: "Angler"),
+        .init(key: "steinbit", norsk: "Gråsteinbit", latin: "Anarhichas lupus", english: "Atlantic wolffish"),
+        .init(key: "rodspette", norsk: "Rødspette", latin: "Pleuronectes platessa", english: "European plaice"),
+        .init(key: "piggskate", norsk: "Piggskate", latin: "Raja clavata", english: "Thornback ray"),
+        .init(key: "glassmanet", norsk: "Glassmanet", latin: "Aurelia aurita", english: "Moon jelly"),
+        .init(key: "brennmanet", norsk: "Brennmanet", latin: "Cyanea capillata", english: "Lion's mane jellyfish"),
+        .init(key: "sjostikkelsbaer", norsk: "Sjøstikkelsbær", latin: "Pleurobrachia pileus", english: "Sea gooseberry"),
+        .init(key: "hummer", norsk: "Hummer", latin: "Homarus gammarus", english: "European lobster"),
+        .init(key: "sjokreps", norsk: "Sjøkreps", latin: "Nephrops norvegicus", english: "Norway lobster"),
+        .init(key: "taskekrabbe", norsk: "Taskekrabbe", latin: "Cancer pagurus", english: "Brown crab"),
+        .init(key: "korstroll", norsk: "Vanlig korstroll", latin: "Asterias rubens", english: "Common starfish"),
+        .init(key: "solstjerne", norsk: "Piggsolstjerne", latin: "Crossaster papposus", english: "Common sunstar"),
+        .init(key: "drobak", norsk: "Drøbakkråkebolle", latin: "Strongylocentrotus droebachiensis", english: "Green sea urchin"),
+        .init(key: "kraakebolle", norsk: "Rød kråkebolle", latin: "Echinus esculentus", english: "Edible sea urchin"),
+        .init(key: "kamskjell", norsk: "Stort kamskjell", latin: "Pecten maximus", english: "King scallop"),
+        .init(key: "oskjell", norsk: "O-skjell", latin: "Modiolus modiolus", english: "Horse mussel"),
+        .init(key: "sjonellik", norsk: "Sjønellik", latin: "Metridium senile", english: "Plumose anemone"),
+        .init(key: "dodningehand", norsk: "Dødmannshånd", latin: "Alcyonium digitatum", english: "Dead man's fingers"),
+        .init(key: "oyekorall", norsk: "Øyekorall", latin: "Desmophyllum pertusum", english: "Cold-water coral"),
+        .init(key: "sjotre", norsk: "Sjøtre", latin: "Paragorgia arborea", english: "Bubblegum coral"),
+        .init(key: "sjofjaer", norsk: "Stor piperenser", latin: "Funiculina quadrangularis", english: "Tall sea pen"),
+        .init(key: "stortare", norsk: "Stortare", latin: "Laminaria hyperborea", english: "Forest kelp"),
+        .init(key: "sukkertare", norsk: "Sukkertare", latin: "Saccharina latissima", english: "Sugar kelp"),
     ]
 
-    static func spriteDefs() -> [SpriteDef] {
+    static func spriteDefs(english: Bool) -> [SpriteDef] {
         var d: [SpriteDef] = [
             .init(name: "torsk", w: 720, h: 306) { FishArt.torsk($0) },
             .init(name: "sei", w: 680, h: 226) { FishArt.sei($0) },
@@ -96,6 +98,10 @@ enum Species {
             .init(name: "sukkertare-1", w: 240, h: 860) { BenthosArt.sukkertare($0, seed: 2) },
             .init(name: "sukkertare-2", w: 240, h: 860) { BenthosArt.sukkertare($0, seed: 23) },
             .init(name: "shadow", w: 128, h: 48) { BenthosArt.shadow($0) },
+            .init(name: "puff", w: 128, h: 64) { a in a.softDot(500, a.unitH / 2, 495, C3(0.86, 0.88, 0.82), 0.9, sy: a.unitH / 1000) },
+            .init(name: "sjostikkelsbaer", w: 120, h: 150) { BenthosArt.seaGooseberry($0) },
+            .init(name: "pointer-line", w: 64, h: 16) { a in a.fill([(0, a.unitH * 0.3), (1000, a.unitH * 0.3), (1000, a.unitH * 0.7), (0, a.unitH * 0.7)], C3(1, 1, 1), 1, raw: true) },
+            .init(name: "pointer-head", w: 48, h: 48) { a in a.fill([(40, 120), (960, 500), (40, 880), (220, 500)], C3(1, 1, 1), 1, raw: true) },
         ]
         for f in 0..<4 {
             d.append(.init(name: "hummer-\(f)", w: 480, h: 200) { BenthosArt.lobster($0, frame: f, palette: BenthosArt.hummerPalette) })
@@ -103,25 +109,25 @@ enum Species {
             d.append(.init(name: "taskekrabbe-\(f)", w: 380, h: 170) { BenthosArt.taskekrabbe($0, frame: f) })
         }
         for s in all {
-            d.append(.init(name: "cap-\(s.key)", w: 1150, h: 96) { a in caption(a, s) })
+            d.append(.init(name: "cap-\(s.key)", w: 1150, h: 96) { a in caption(a, s, english: english) })
         }
         return d
     }
 
-    private static func caption(_ a: Art, _ s: SpeciesInfo) {
+    private static func caption(_ a: Art, _ s: SpeciesInfo, english: Bool) {
         // Sizes in cell pixels, converted to the cell's 1000-unit space.
         let px = 1 / a.k
         let c = a.ctx
         let head = CTFontCreateWithName("AvenirNext-Medium" as CFString, 50 * px, nil)
         let sub = CTFontCreateWithName("IowanOldStyle-Italic" as CFString, 44 * px, nil)
-        let text = NSMutableAttributedString(string: s.norsk, attributes: [
+        let text = NSMutableAttributedString(string: english ? s.english : s.norsk, attributes: [
             kCTFontAttributeName as NSAttributedString.Key: head,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1),
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.86, green: 0.92, blue: 0.91, alpha: 1),
             kCTKernAttributeName as NSAttributedString.Key: 0.5 * px,
         ])
         text.append(NSAttributedString(string: "   " + s.latin, attributes: [
             kCTFontAttributeName as NSAttributedString.Key: sub,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.90, green: 0.96, blue: 0.96, alpha: 0.95),
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 0.76, green: 0.85, blue: 0.85, alpha: 0.95),
         ]))
         let line = CTLineCreateWithAttributedString(text)
         let width = min(1100 * px, Double(CTLineGetTypographicBounds(line, nil, nil, nil)))
