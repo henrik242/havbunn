@@ -46,11 +46,16 @@ $(CONTENTS)/Info.plist: Resources/Info.plist
 	cp $< $@
 
 # Offscreen frame renderer and a windowed host for the built bundle.
-tools: $(BUILD)/havbunn-render $(BUILD)/havbunn-preview
+tools: $(BUILD)/havbunn-render $(BUILD)/havbunn-preview $(BUILD)/havbunn-sprite
 
 $(BUILD)/havbunn-render: $(ENGINE) Tools/render.swift
 	@mkdir -p $(BUILD)
 	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name HavbunnRender -parse-as-library -o $@ $(ENGINE) Tools/render.swift
+
+# Renders a single sprite (or all) to PNGs for inspecting one species at a time.
+$(BUILD)/havbunn-sprite: $(ENGINE) Tools/sprite.swift
+	@mkdir -p $(BUILD)
+	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name HavbunnSprite -parse-as-library -o $@ $(ENGINE) Tools/sprite.swift
 
 $(BUILD)/havbunn-preview: Tools/preview.swift
 	@mkdir -p $(BUILD)
