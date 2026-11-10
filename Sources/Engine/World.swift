@@ -154,6 +154,10 @@ final class World {
 
     /// Tidal current along the view, reversing over minutes. Plants, drift and fish follow it.
     private(set) var flow: Float = 0
+    /// Slow camera pan, as the tangent of the yaw angle. Starts centred.
+    private(set) var pan: Float = 0
+    private let overscan: Float
+    private static let panPeriod: Float = 300
     private(set) var flowIntegral: Float = 0
     private let flowPhase: Float
     /// Rock tops where mysids hang in clouds: x, y, z, radius.
@@ -172,7 +176,8 @@ final class World {
 
     private let shadow: AtlasFrame
 
-    init(seed: UInt64, terrain: Terrain, atlas: Atlas, aspect: Float, focal: Float, camY: Float, horizon: Float) {
+    init(seed: UInt64, terrain: Terrain, atlas: Atlas, aspect: Float, overscan: Float, focal: Float, camY: Float, horizon: Float) {
+        self.overscan = overscan
         self.terrain = terrain
         self.atlas = atlas
         self.aspect = aspect; self.focal = focal; self.camY = camY; self.horizon = horizon
@@ -194,7 +199,10 @@ final class World {
 
     // MARK: setup
 
-    private func viewHalfWidth(_ z: Float) -> Float { z * aspect / focal }
+    /// Half width of the whole field the pan can show, for placing and roaming.
+    private func viewHalfWidth(_ z: Float) -> Float { z * aspect / focal * overscan }
+
+    private func screenX(_ x: Float, _ z: Float) -> Float { (x / z - pan) * focal / aspect }
 
     /// Looks for a seabed spot in view that satisfies the rock-mask test.
     private func findSpot(z zr: ClosedRange<Float>, ndc: ClosedRange<Float> = -1.1...1.1,
@@ -438,6 +446,8 @@ final class World {
         let tide = sin((time + flowPhase * 10) * 2 * .pi / 600)
         flow = 0.7 * tide + 0.25 * sin(time * 2 * .pi / 143 + flowPhase)
         flowIntegral += flow * dt
+        // Swing through most of the overscan and back, keeping inside the baked field.
+        pan = (overscan - 1) * aspect / focal * 0.85 * sin(time * 2 * .pi / World.panPeriod)
         stepPuffs(dt)
         for f in loners { stepLoner(f, dt: dt) }
         for s in schools { stepSchool(s, dt: dt) }
@@ -709,7 +719,7 @@ final class World {
         }
         // Follow the animal; leave early if it swims out of view.
         guard captionKey != nil, captionClock < World.captionShown, let p = captionSubject?() else { return }
-        let nx = p.x * focal / (p.z * aspect), ny = horizon + (p.y - camY) * focal / p.z
+        let nx = screenX(p.x, p.z), ny = horizon + (p.y - camY) * focal / p.z
         if abs(nx) > 1.0 || abs(ny) > 1.0 {
             captionClock = max(captionClock, World.captionShown - 1.2)
             return
@@ -724,7 +734,7 @@ final class World {
     }
 
     private func isVisible(x: Float, y: Float, z: Float, margin: Float = 0.9) -> Bool {
-        let nx = x * focal / (z * aspect)
+        let nx = screenX(x, z)
         let ny = horizon + (y - camY) * focal / z
         return abs(nx) < margin && abs(ny) < margin
     }
@@ -931,7 +941,7 @@ final class World {
 
             // A thin pointer from the start of the text to the animal, stopping just short of it.
             if let p = captionSubject?(), count + 2 <= capacity {
-                let nx = p.x * focal / (p.z * aspect), ny = horizon + (p.y - camY) * focal / p.z
+                let nx = screenX(p.x, p.z), ny = horizon + (p.y - camY) * focal / p.z
                 let textLeft = cx - hw / aspect + 2 * hw / aspect * (26.0 / 1150.0)
                 let below = cy < ny
                 let start = SIMD2<Float>((textLeft + 0.012) * aspect, cy + (below ? hh * 0.55 : -hh * 0.55))

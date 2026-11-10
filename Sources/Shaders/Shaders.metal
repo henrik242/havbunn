@@ -8,7 +8,19 @@ struct Uniforms {
     float2 worldHalf;
     float2 extra;   // focus x in ndc, light level
     float4 flow;    // current (-1..1, + is toward +x), its integral over time
+    float4 view;    // pan as tan of the yaw angle, baked width over screen width
 };
+
+// The terrain is baked wider than the screen; the view pans across it. A pan is a rotation,
+// so for these small angles it shifts everything on screen equally, with no parallax.
+static float2 bakeUV(float2 ndc, constant Uniforms &U) {
+    float x = (ndc.x + U.view.x * U.focal / U.aspect) / U.view.y;
+    return float2(x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+}
+
+static float screenX(float x, float z, constant Uniforms &U) {
+    return (x / z - U.view.x) * U.focal / U.aspect;
+}
 
 struct Sprite {
     float4 pos;   // world x, y, z, rotation
@@ -310,12 +322,12 @@ fragment float4 backdropFS(FSOut in [[stage_in]],
                            texture2d<float> color [[texture(0)]],
                            texture2d<float> depth [[texture(1)]],
                            texture2d<float> caustic [[texture(2)]]) {
-    float2 uv = float2(in.ndc.x * 0.5 + 0.5, 0.5 - in.ndc.y * 0.5);
+    float2 uv = bakeUV(in.ndc, U);
     float4 c = color.sample(linearClamp, uv);
     float z = depth.sample(nearestClamp, uv).r;
     float3 rgb = c.rgb;
     if (z < 1000.0 && c.a > 0.001) {
-        float2 xz = float2(in.ndc.x * U.aspect / U.focal * z, z);
+        float2 xz = float2((in.ndc.x * U.aspect / U.focal + U.view.x) * z, z);
         float k = causticAt(caustic, xz, U.time);
         k = k / (1.0 + 0.6 * k);
         rgb += c.a * k * float3(0.07, 0.14, 0.12) * U.extra.y;
@@ -409,7 +421,7 @@ vertex SpriteOut spriteVS(uint vid [[vertex_id]],
         p.x *= s.size.z;
         float3 world = float3(s.pos.x + p.x, s.pos.y + p.y, s.pos.z);
         o.world = world;
-        ndc = float2(world.x * U.focal / (world.z * U.aspect),
+        ndc = float2(screenX(world.x, world.z, U),
                      U.horizon + (world.y - U.camY) * U.focal / world.z);
         o.isFlat = 0.0;
     }
@@ -439,8 +451,7 @@ fragment float4 spriteFS(SpriteOut in [[stage_in]],
     float z = in.world.z;
     float vis = 1.0;
     if (in.depthTest > 0.5) {
-        float2 suv = float2(in.ndc.x * 0.5 + 0.5, 0.5 - in.ndc.y * 0.5);
-        float tz = depth.sample(nearestClamp, suv).r;
+        float tz = depth.sample(nearestClamp, bakeUV(in.ndc, U)).r;
         vis = smoothstep(-0.40, 0.05, tz - z);
     }
     if (vis <= 0.0) discard_fragment();
@@ -490,7 +501,8 @@ vertex SnowOut snowVS(uint vid [[vertex_id]], constant Uniforms &U [[buffer(0)]]
     float z = mix(2.0, 28.0, r2.x * r2.x);
     float t = U.time;
     // Snow drifts with the shared current and barely sinks; eddies are a field, not per flake.
-    float fx = fract(r1.x + (U.flow.y * 0.05 + t * 0.0006 * (r3.x - 0.5)) * U.focal / (z * U.aspect) + 0.008 * sin(t * 0.13 + 6.0 * r1.y));
+    float fx = fract(r1.x + (U.flow.y * 0.05 + t * 0.0006 * (r3.x - 0.5)) * U.focal / (z * U.aspect) + 0.008 * sin(t * 0.13 + 6.0 * r1.y)
+                   - U.view.x * U.focal / U.aspect / 2.2);
     float fy = fract(r1.y - t * (0.0012 + 0.0016 * r3.y) * U.focal / z + 0.005 * sin(t * 0.11 + 5.0 * r1.x));
     float2 ndc = float2(fx, fy) * 2.2 - 1.1;
     SnowOut o;
@@ -512,8 +524,7 @@ fragment float4 snowFS(SnowOut in [[stage_in]],
     float d = length(pc - 0.5) * 2.0;
     float a = (1.0 - smoothstep(mix(0.45, 0.0, in.soft), 1.0, d)) * in.alpha;
     if (a < 0.002) discard_fragment();
-    float2 suv = float2(in.ndc.x * 0.5 + 0.5, 0.5 - in.ndc.y * 0.5);
-    if (depth.sample(nearestClamp, suv).r < in.z) discard_fragment();
+    if (depth.sample(nearestClamp, bakeUV(in.ndc, U)).r < in.z) discard_fragment();
     return float4(min(waterColor(in.ndc.y) * 2.4 + 0.03, 1.0) * a, a);
 }
 
@@ -532,7 +543,7 @@ vertex SnowOut mysidVS(uint vid [[vertex_id]],
     float3 offB = (float3(hash22(float2(id, cyc + 1.0)), hash21(float2(id + 500.0, cyc + 1.0))) - 0.5) * float3(2.0, 1.0, 2.0);
     float3 w = a.xyz + mix(offA, offB, smoothstep(0.0, 0.1, fr)) * a.w + float3(U.flow.x * 0.08, 0.0, 0.0);
     float z = max(w.z, 1.0);
-    float2 ndc = float2(w.x * U.focal / (z * U.aspect), U.horizon + (w.y - U.camY) * U.focal / z);
+    float2 ndc = float2(screenX(w.x, z, U), U.horizon + (w.y - U.camY) * U.focal / z);
     SnowOut o;
     o.position = float4(ndc, 0, 1);
     o.ndc = ndc;

@@ -9,6 +9,7 @@ struct Uniforms {
     var worldHalf = SIMD2<Float>(45, 90)
     var extra = SIMD2<Float>(0, 1)   // focus x in ndc, light level
     var flow = SIMD4<Float>(0, 0, 0, 0)  // current, its integral
+    var view = SIMD4<Float>(0, 1, 0, 0)  // pan, baked width over screen width
 }
 
 struct Sprite {
@@ -31,6 +32,8 @@ public final class Renderer {
     private static let framesInFlight = 3
     private static let causticSize = 512
     private static let gridCells = 24
+    /// How much wider than the screen the terrain is baked, room for the slow pan.
+    static let overscan: Float = 1.18
 
     let device: MTLDevice
     private let queue: MTLCommandQueue
@@ -51,6 +54,7 @@ public final class Renderer {
     private let seed: UInt64
     private var clock: Double = 0
     private var causticClock: Double = 1
+    private var focusNdc: Float = 0
 
     public var showNames = true
     /// Caption language; read when the atlas is built in `prepare`.
@@ -127,10 +131,10 @@ public final class Renderer {
 
         let atlas = Atlas.shared(device: device, english: english)
         let terrain = Terrain(seed: seed, aspect: aspect, focal: uniforms.focal)
-        uniforms.extra.x = terrain.focusNdc
+        focusNdc = terrain.focusNdc
         self.atlas = atlas
         self.terrain = terrain
-        world = World(seed: seed, terrain: terrain, atlas: atlas, aspect: aspect, focal: uniforms.focal,
+        world = World(seed: seed, terrain: terrain, atlas: atlas, aspect: aspect, overscan: Renderer.overscan, focal: uniforms.focal,
                       camY: uniforms.camY, horizon: uniforms.horizon)
         bake(terrain: terrain, width: width, height: height)
 
@@ -144,8 +148,9 @@ public final class Renderer {
 
     private func bake(terrain: Terrain, width: Int, height: Int) {
         // Water and rock are soft, so capping the bake saves real time on 5K+ panels.
-        let scale = min(1.0, 2880.0 / Double(max(width, 1)))
-        let w = max(16, Int(Double(width) * scale)), h = max(16, Int(Double(height) * scale))
+        let wide = Double(width) * Double(Renderer.overscan)
+        let scale = min(1.0, 2880.0 * Double(Renderer.overscan) / max(wide, 1))
+        let w = max(16, Int(wide * scale)), h = max(16, Int(Double(height) * scale))
 
         let hd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg32Float, width: Terrain.size,
                                                           height: Terrain.size, mipmapped: false)
@@ -179,7 +184,11 @@ public final class Renderer {
             let y0 = h * b / bands, y1 = h * (b + 1) / bands
             enc.setScissorRect(MTLScissorRect(x: 0, y: y0, width: w, height: y1 - y0))
             enc.setRenderPipelineState(bakePipeline)
+            // Bake the wider field: wider aspect, no pan, focus in the bake's own coordinates.
             var u = uniforms
+            u.aspect = uniforms.aspect * Renderer.overscan
+            u.view = SIMD4(0, 1, 0, 0)
+            u.extra.x = focusNdc / Renderer.overscan
             enc.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
             enc.setFragmentTexture(heightTex, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -218,6 +227,9 @@ public final class Renderer {
         uniforms.extra.y = 0.92 + 0.06 * sin(time * 0.034) + 0.04 * sin(time * 0.0097 + 1.3)
         if fadeOverride >= 0 { uniforms.fade = fadeOverride }
         uniforms.flow = SIMD4(world.flow, world.flowIntegral, 0, 0)
+        uniforms.view = SIMD4(world.pan, Renderer.overscan, 0, 0)
+        // The light shafts and glow sit over the reef, so they move with the view.
+        uniforms.extra.x = focusNdc - world.pan * uniforms.focal / uniforms.aspect
         var u = uniforms
 
         // Caustic tile, refreshed at 30 Hz.
