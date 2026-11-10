@@ -18,7 +18,7 @@ jobs:
     outputs:
       dist_name: ${{ steps.version.outputs.dist_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Work out version
         id: version
@@ -117,7 +117,7 @@ jobs:
           echo "$info" | grep -q '^Timestamp=' || { echo "::error::No secure timestamp" >&2; exit 1; }
           xcrun stapler validate "$bundle"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.version.outputs.dist_name }}
           path: build/${{ steps.version.outputs.dist_name }}.zip
@@ -130,7 +130,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.dist_name }}
       - name: Create release
