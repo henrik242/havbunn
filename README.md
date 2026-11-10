@@ -35,7 +35,8 @@ tag build produced. CI fails if any of these repository secrets is missing:
 - `MACOS_CERT_P12_BASE64`, `MACOS_CERT_PASSWORD`: the Developer ID Application certificate
   and its private key, exported as .p12 and base64-encoded
 - `APPLE_TEAM_ID`: the team the signature must belong to
-- `APPLE_ID`, `APPLE_APP_PASSWORD`: for `notarytool`; the password is an app-specific password
+- `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`: an App Store Connect API
+  key (the .p8 file's contents), used by `notarytool`
 
 Local builds are ad-hoc signed. To sign locally with the same identity:
 

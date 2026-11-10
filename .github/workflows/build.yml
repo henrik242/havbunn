@@ -37,11 +37,12 @@ jobs:
         env:
           CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
           missing=""
-          for name in CERT_P12_BASE64 CERT_PASSWORD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+          for name in CERT_P12_BASE64 CERT_PASSWORD APPLE_TEAM_ID API_KEY_P8 API_KEY_ID API_ISSUER_ID; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
@@ -84,12 +85,16 @@ jobs:
 
       - name: Notarize
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           DIST_NAME: ${{ steps.version.outputs.dist_name }}
         run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$API_KEY_P8" > "$key"
           xcrun notarytool submit "build/$DIST_NAME.zip" \
-            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+            --key "$key" --key-id "$API_KEY_ID" --issuer "$API_ISSUER_ID" --wait
+          rm "$key"
           xcrun stapler staple build/Havbunn.saver
           # Re-zip so the download carries the stapled ticket.
           rm "build/$DIST_NAME.zip"
