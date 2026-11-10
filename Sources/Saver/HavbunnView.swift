@@ -20,7 +20,6 @@ public final class HavbunnView: ScreenSaverView {
     private var stopped = false
     private var sheet: NSWindow?
     private var namesPopup: NSPopUpButton?
-    private var lastIdleFrame: CFTimeInterval = 0
     /// Read by the preview tool to confirm frames reach the layer.
     @objc public private(set) var framesPresented = 0
 
@@ -73,20 +72,6 @@ public final class HavbunnView: ScreenSaverView {
         }
     }
 
-    // A host relaunch can leave a view animating with no screen saver running. Inside the
-    // system host, only render properly while the engine is up.
-    private static let inSystemHost = ProcessInfo.processInfo.processName.contains("legacyScreenSaver")
-    private static var engineCheckedAt: CFTimeInterval = -10
-    private static var engineUp = true
-    private static func engineRunning(_ now: CFTimeInterval) -> Bool {
-        if now - engineCheckedAt > 2 {
-            engineCheckedAt = now
-            let up = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.ScreenSaver.Engine").isEmpty
-            if up != engineUp { saverLog.notice("screen saver engine \(up ? "running" : "gone", privacy: .public)") }
-            engineUp = up
-        }
-        return engineUp
-    }
 
     public override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
@@ -261,10 +246,6 @@ public final class HavbunnView: ScreenSaverView {
         }
 
         let now = CACurrentMediaTime()
-        if HavbunnView.inSystemHost, !isPreview, !HavbunnView.engineRunning(now) {
-            guard now - lastIdleFrame > 1 else { return }
-            lastIdleFrame = now
-        }
         ticks += 1
         report(now)
         if now < nextDrawableAttempt {
