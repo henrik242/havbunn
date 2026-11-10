@@ -524,6 +524,117 @@ enum FishArt {
         a.eye(915, 182, 11, iris: hex(0xb79a50))
     }
 
+    /// Small-spotted catshark: slender, sandy brown with many small dark spots, both dorsals set
+    /// far back, a long low tail and a cat-like slit eye.
+    static func rodhai(_ a: Art) {
+        let fin = hex(0x7e6848)
+        a.fill([(84, 126), (0, 110), (6, 128), (24, 152), (84, 146)], fin, 0.95)
+        a.fill([(470, 92), (498, 48), (520, 46), (546, 86)], fin)
+        a.fill([(300, 106), (324, 70), (342, 68), (358, 102)], fin)
+        a.fill([(360, 168), (334, 200), (380, 200), (420, 172)], fin, 0.9)
+        a.fill([(560, 178), (520, 214), (580, 214), (630, 180)], fin, 0.9)
+        let top: [XY] = [(60, 126), (180, 116), (380, 96), (560, 82), (720, 78), (850, 88), (940, 108), (995, 138)]
+        let bottom: [XY] = [(60, 142), (180, 152), (380, 170), (560, 180), (720, 182), (850, 176), (940, 162), (995, 148)]
+        let back = hex(0x8a7454), side = hex(0xb39a74), belly = hex(0xe8dcc4)
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.6)
+            let upper = 1 - smooth(0.55, 0.75, v)
+            c = mix(c, hex(0x3a2c1c), spots(x, y, cell: 12, radius: 3.2, keep: 0.7) * upper)
+            c = mix(c, hex(0xe9dfc8), spots(x, y, cell: 40, radius: 4, keep: 0.35, seed: 3) * upper * 0.7)
+            return rgba(c * roundLight(v))
+        }
+        a.fill([(800, 160), (740, 206), (800, 210), (850, 168)], fin, 0.95)
+        a.disc(905, 114, 11, hex(0xc9b060))
+        a.disc(905, 114, 9, hex(0x0a0806), 1, sy: 0.25)
+        a.line([(995, 146), (968, 156), (944, 154)], hex(0x2a2014), 0.45, 3)
+    }
+
+    /// Grey gurnard: a big bony sloping head, small white spots, wide pectoral fans, and three
+    /// free fin rays it walks on.
+    static func knurr(_ a: Art) {
+        let finC = hex(0x5d5a52), finD = hex(0x8b8a80)
+        a.fin(base: [(84, 178), (64, 190), (84, 202)], edge: [(0, 120), (30, 190), (0, 260)], root: finC, tip: finD, alpha: 0.8, rays: 10)
+        a.fin(base: [(300, 130), (590, 104)], edge: [(300, 104), (440, 78), (600, 80)], root: finC, tip: finD, alpha: 0.75, rays: 18)
+        let spineBase: [XY] = [(610, 100), (680, 94), (760, 92)]
+        let spineTips: [XY] = [(620, 40), (660, 30), (700, 34), (740, 52), (764, 76)]
+        a.fill(spineBase + spineTips.reversed(), finC, 0.85, raw: true)
+        a.softDot(690, 70, 22, hex(0x16130f), 0.8)
+        for x in stride(from: 330.0, through: 560, by: 30) {
+            a.fill([(x - 6, 248), (x, 262), (x + 6, 248)], finD, 0.7, raw: true)
+        }
+        let top: [XY] = [(80, 176), (200, 152), (400, 122), (600, 100), (780, 92), (900, 112), (985, 190)]
+        let bottom: [XY] = [(80, 198), (200, 214), (400, 242), (600, 262), (780, 278), (880, 274), (950, 252), (990, 206)]
+        let back = hex(0x5f5c54), side = hex(0x8e8a7e), belly = hex(0xe2ddd0)
+        a.body(top: top, bottom: bottom) { t, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.55)
+            c = mix(c, hex(0xe6e2d6), spots(x, y, cell: 18, radius: 3, keep: 0.6) * (1 - smooth(0.5, 0.7, v)))
+            // Bony plates on the head.
+            if t > 0.82 { c *= 0.92 + 0.12 * artNoise.fbm(x * 0.08, y * 0.08, 2) }
+            return rgba(c * roundLight(v))
+        }
+        // Free rays used as legs, then the pectoral fan over them.
+        for i in 0..<3 {
+            let x0 = 770 + Double(i) * 22
+            a.line([(x0, 264), (x0 + 10, 330), (x0 + 4, 396)], hex(0xcbc4b2), 0.95, 6)
+        }
+        a.fin(base: [(720, 190), (740, 254)], edge: [(560, 240), (470, 320), (640, 352)], root: hex(0x6e6b62), tip: hex(0x8fa8b8), alpha: 0.75, rays: 12)
+        a.line([(985, 196), (956, 214), (920, 214)], hex(0x26231e), 0.5, 4)
+        a.eye(870, 150, 24, iris: hex(0xb8a46a))
+    }
+
+    /// Ling: a long, slightly flattened cod relative with a barbel, a short first and long second
+    /// dorsal, dark spots at the rear of the vertical fins and pale fin margins.
+    static func lange(_ a: Art) {
+        let finC = hex(0x4c4632), finD = hex(0x6f684a), rim = hex(0xe6e0cc)
+        a.fin(base: [(60, 112), (44, 122), (60, 132)], edge: [(6, 84), (0, 122), (6, 160)], root: finC, tip: finD, alpha: 0.85, rays: 10)
+        let d2: [XY] = [(120, 80), (400, 62), (660, 56)]
+        a.fin(base: [(120, 106), (400, 88), (660, 80)], edge: d2, root: finC, tip: finD, alpha: 0.85, rays: 30)
+        a.line(d2, rim, 0.7, 3)
+        a.disc(130, 90, 10, hex(0x14120c), 0.85)
+        a.fin(base: [(700, 78), (780, 76)], edge: [(705, 50), (740, 42), (785, 58)], root: finC, tip: finD, alpha: 0.85, rays: 7)
+        let an: [XY] = [(120, 170), (360, 186), (560, 190)]
+        a.fin(base: [(120, 140), (360, 158), (560, 164)], edge: an, root: finC, tip: finD, alpha: 0.85, rays: 22)
+        a.line(an, rim, 0.7, 3)
+        a.disc(130, 160, 9, hex(0x14120c), 0.85)
+        let top: [XY] = [(56, 110), (250, 94), (500, 82), (700, 76), (850, 80), (940, 98), (995, 126)]
+        let bottom: [XY] = [(56, 134), (250, 150), (500, 162), (700, 166), (850, 160), (940, 146), (995, 134)]
+        let back = hex(0x5a5434), side = hex(0x8c8458), belly = hex(0xdcd6c0)
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.55)
+            c = mix(c, hex(0x3a3420), smooth(0.48, 0.66, artNoise.fbm(x * 0.015, y * 0.06, 3)) * 0.5 * (1 - smooth(0.5, 0.7, v)))
+            return rgba(c * roundLight(v))
+        }
+        a.fin(base: [(820, 120), (820, 144)], edge: [(760, 126), (740, 150), (770, 168)], root: finC, tip: finD, alpha: 0.75, rays: 7)
+        gill(a, 850, 84, 158, bow: 20)
+        a.line([(995, 130), (968, 140), (940, 138)], hex(0x22200f), 0.5, 3)
+        a.line([(958, 150), (954, 172), (946, 184)], hex(0xbdb38a), 1, 3)
+        a.eye(930, 104, 10, iris: hex(0x9a8e5c))
+    }
+
+    /// Whiting: silvery with a sandy back, three dorsal fins, and a dark spot at the base of the
+    /// pectoral fin.
+    static func hvitting(_ a: Art) {
+        let finC = hex(0x8a8670), finD = hex(0xb8b6a6)
+        a.fin(base: [(90, 172), (60, 184), (90, 196)], edge: [(0, 90), (24, 184), (0, 278)], root: finC, tip: finD, alpha: 0.7, rays: 12)
+        a.fin(base: [(150, 160), (300, 116)], edge: [(160, 120), (230, 82), (310, 84)], root: finC, tip: finD, alpha: 0.65, rays: 9)
+        a.fin(base: [(320, 110), (480, 78)], edge: [(330, 66), (400, 36), (490, 46)], root: finC, tip: finD, alpha: 0.65, rays: 10)
+        a.fin(base: [(500, 74), (640, 66)], edge: [(510, 34), (580, 20), (650, 34)], root: finC, tip: finD, alpha: 0.65, rays: 9)
+        a.fin(base: [(150, 200), (320, 244)], edge: [(160, 240), (230, 280), (330, 290)], root: finD, tip: finD, alpha: 0.6, rays: 9)
+        let top: [XY] = [(85, 170), (170, 150), (300, 108), (480, 74), (650, 64), (790, 76), (900, 116), (985, 170)]
+        let bottom: [XY] = [(85, 190), (170, 200), (300, 230), (480, 262), (650, 270), (790, 262), (900, 232), (985, 186)]
+        let back = hex(0x9a9070), side = hex(0xd9dad0), belly = hex(0xf6f6f0)
+        a.body(top: top, bottom: bottom) { _, v, x, y in
+            var c = flank(v, back: back, side: side, belly: belly, split: 0.4)
+            c += C3(0.12, 0.13, 0.12) * pow(clamp01(1 - abs(v - 0.55) * 3.2), 3)
+            c *= 1 - scales(x, y, size: 24) * 0.08
+            return rgba(c * (0.72 + 0.34 * roundLight(v)))
+        }
+        a.fin(base: [(770, 170), (770, 205)], edge: [(690, 172), (665, 200), (700, 232)], root: finC, tip: finD, alpha: 0.6, rays: 7)
+        a.disc(772, 176, 13, hex(0x1a1a14), 0.9)
+        a.line([(985, 180), (950, 196), (910, 194)], hex(0x2a2a22), 0.5, 4)
+        a.eye(905, 140, 22, iris: hex(0xd8d8c8))
+    }
+
     static func rodspette(_ a: Art) {
         let fringe = hex(0x7d6a42)
         a.fin(base: [(140, 170), (120, 195), (140, 220)], edge: [(10, 120), (0, 195), (10, 270)], root: fringe, tip: hex(0xa68f5d), rays: 12)

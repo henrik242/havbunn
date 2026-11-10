@@ -301,6 +301,7 @@ struct SpriteDef {
 
 final class Atlas {
     static let side = 4096
+    static let maxHeight = 8192
     static let pad = 24
 
     let texture: MTLTexture
@@ -329,47 +330,53 @@ final class Atlas {
     private init(device: MTLDevice, english: Bool) {
         self.english = english
         let side = Atlas.side
-        let cs = CGColorSpace(name: CGColorSpace.sRGB)!
-        let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
-                            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-        ctx.translateBy(x: 0, y: CGFloat(side))
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.interpolationQuality = .high
-
         let defs = Species.spriteDefs(english: english).sorted { $0.h > $1.h }
-        var x = Atlas.pad, y = Atlas.pad, shelf = 0, seed: UInt64 = 1
+
+        // Pack first, then size the texture to what the sprites need, so adding species never
+        // overflows. Shelves in order of height keep the packing tight.
+        var layout: [(SpriteDef, Int, Int)] = []
+        var x = Atlas.pad, y = Atlas.pad, shelf = 0
         for d in defs {
             if x + d.w + Atlas.pad > side {
                 x = Atlas.pad
                 y += shelf + Atlas.pad
                 shelf = 0
             }
-            if y + d.h + Atlas.pad > side {
-                NSLog("Havbunn: atlas overflow at %@", d.name)
-                frames[d.name] = frames.values.first
-                continue
-            }
+            layout.append((d, x, y))
+            x += d.w + Atlas.pad
+            shelf = max(shelf, d.h)
+        }
+        let height = min(Atlas.maxHeight, y + shelf + Atlas.pad)
+        Atlas.usedHeight = y + shelf
+        if y + shelf + Atlas.pad > Atlas.maxHeight {
+            NSLog("Havbunn: atlas needs %d rows, more than %d", y + shelf + Atlas.pad, Atlas.maxHeight)
+        }
+
+        let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+        let ctx = CGContext(data: nil, width: side, height: height, bitsPerComponent: 8, bytesPerRow: side * 4,
+                            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.interpolationQuality = .high
+
+        let w = Float(side), h = Float(height)
+        for (seed, (d, x, y)) in layout.enumerated() where y + d.h <= height {
             ctx.saveGState()
             ctx.clip(to: CGRect(x: x, y: y, width: d.w, height: d.h))
             ctx.translateBy(x: CGFloat(x), y: CGFloat(y))
-            let art = Art(ctx: ctx, ox: x, oy: y, pxW: d.w, pxH: d.h, seed: seed)
+            let art = Art(ctx: ctx, ox: x, oy: y, pxW: d.w, pxH: d.h, seed: UInt64(seed + 1))
             ctx.scaleBy(x: art.k, y: art.k)
             d.paint(art)
             ctx.restoreGState()
-            let s = Float(side)
             frames[d.name] = AtlasFrame(
-                uv: SIMD4(Float(x) / s, Float(y) / s, Float(x + d.w) / s, Float(y + d.h) / s),
+                uv: SIMD4(Float(x) / w, Float(y) / h, Float(x + d.w) / w, Float(y + d.h) / h),
                 aspect: Float(d.w) / Float(d.h))
-            x += d.w + Atlas.pad
-            shelf = max(shelf, d.h)
-            seed += 1
         }
-        Atlas.usedHeight = y + shelf
 
-        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: side, height: side, mipmapped: true)
+        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: side, height: height, mipmapped: true)
         td.usage = .shaderRead
         texture = device.makeTexture(descriptor: td)!
-        texture.replace(region: MTLRegionMake2D(0, 0, side, side), mipmapLevel: 0,
+        texture.replace(region: MTLRegionMake2D(0, 0, side, height), mipmapLevel: 0,
                         withBytes: ctx.data!, bytesPerRow: side * 4)
         if let q = device.makeCommandQueue(), let c = q.makeCommandBuffer(), let b = c.makeBlitCommandEncoder() {
             b.generateMipmaps(for: texture)

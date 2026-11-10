@@ -328,6 +328,7 @@ final class World {
             .init(key: "rognkjeks", length: 0.34, speed: 0.10, zr: 3.8...9, alt: 0.15...0.9, amp: 0.16, wave: 5, count: 1, hover: 0.9),
             .init(key: "bergnebb", length: 0.15, speed: 0.22, zr: 3.8...8, alt: 0.15...0.9, amp: 0.24, wave: 6, count: 5, hover: 0.6),
             .init(key: "brosme", length: 0.6, speed: 0.12, zr: 4.5...11, alt: 0.15...0.7, amp: 0.2, wave: 7, count: 2, hover: 0.85),
+            .init(key: "lange", length: 1.0, speed: 0.14, zr: 5...12, alt: 0.2...0.9, amp: 0.22, wave: 7.5, count: 1, hover: 0.9),
             .init(key: "pigghaa", length: 0.95, speed: 0.55, zr: 5...15, alt: 0.9...3.2, amp: 0.45, wave: 7.5, count: 2),
         ]
         for spec in loneSpecs {
@@ -349,6 +350,7 @@ final class World {
             .init(key: "sild", length: 0.30, speed: 0.95, zr: 8...18, alt: 3...7.5, amp: 0.4, wave: 7, count: 80),
             .init(key: "sei", length: 0.68, speed: 0.72, zr: 6...15, alt: 1.2...4.5, amp: 0.36, wave: 7, count: 11),
             .init(key: "makrell", length: 0.38, speed: 1.25, zr: 7...17, alt: 3...7, amp: 0.42, wave: 8, count: 10),
+            .init(key: "hvitting", length: 0.3, speed: 0.5, zr: 5...11, alt: 0.6...2.5, amp: 0.38, wave: 7, count: 18),
         ]
         for spec in schoolSpecs {
             let school = School(spec: spec)
@@ -429,6 +431,11 @@ final class World {
         addRester("breiflabb", length: 0.85, mode: 1, amp: 0.02, glide: 0, rest: (9999, 9999), z: 4.3...7, rock: 0.05...0.3, lift: -0.03)
         addRester("rodspette", length: 0.32, mode: 3, amp: 0.05, glide: 0.4, rest: (15, 60), z: 3.6...7, rock: 0...0.08, lift: 0)
         addRester("lomre", length: 0.3, mode: 3, amp: 0.05, glide: 0.35, rest: (20, 70), z: 4...8, rock: 0...0.08, lift: 0)
+        // Catshark: mostly lying still, now and then a slow swim along the bottom.
+        addRester("rodhai", length: 0.6, mode: 1, amp: 0.05, glide: 0.22, rest: (25, 80), z: 4...9, rock: 0...0.3, lift: 0)
+        // Gurnard walks the sand on its free pectoral rays; the whelk creeps almost without pause.
+        addRester("knurr", length: 0.3, mode: 1, amp: 0.03, glide: 0.08, rest: (4, 14), z: 3.8...8, rock: 0...0.1, lift: 0)
+        addRester("kongsnegl", length: 0.1, mode: 0, amp: 0, glide: 0.012, rest: (1, 5), z: 3.6...7, rock: 0...0.2, lift: 0)
         addRester("piggskate", length: 0.6, mode: 3, amp: 0.05, glide: 0.45, rest: (25, 90), z: 4...9, rock: 0...0.12, lift: 0)
         addRester("steinbit", length: 0.7, mode: 1, amp: 0.08, glide: 0.15, rest: (40, 120), z: 4...8, rock: 0.3...0.7, lift: 0)
 
@@ -687,12 +694,14 @@ final class World {
         }
         let target: Float = r.facing > 0 ? 0 : .pi
         r.yaw += max(-2.2 * dt, min(2.2 * dt, target - r.yaw))
-        r.y = terrain.height(r.x, r.z) + 0.02 + r.height + r.glideAmount * 0.12
+        let lifts: Float = r.key == "knurr" || r.key == "kongsnegl" ? 0 : 1
+        r.y = terrain.height(r.x, r.z) + 0.02 + r.height + r.glideAmount * 0.12 * lifts
     }
 
     /// Silt kicked up when a ray or flatfish lifts off or settles.
     private func addPuff(_ r: Rester) {
-        guard puffs.count < 12 else { return }
+        // Walkers and crawlers do not stir up the bottom like a ray lifting off.
+        guard puffs.count < 12, r.key != "knurr", r.key != "kongsnegl" else { return }
         puffs.append(Puff(x: r.x, y: terrain.height(r.x, r.z), z: r.z, age: 0, size: r.length * 0.5))
     }
 

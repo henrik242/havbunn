@@ -33,20 +33,21 @@ struct Main {
         let r = try Renderer(device: device, shaderSource: lib, seed: seed)
         r.english = english
         r.prepare(width: w, height: h)
-        print(String(format: "prepare: %.2fs, atlas used height %d of %d", CFAbsoluteTimeGetCurrent() - t0, Atlas.usedHeight, Atlas.side))
+        print(String(format: "prepare: %.2fs, atlas used height %d of %d", CFAbsoluteTimeGetCurrent() - t0, Atlas.usedHeight, Atlas.maxHeight))
         r.fadeOverride = 1
         if dumpAtlas {
             let tex = Atlas.shared(device: device, english: english).texture
-            var px = [UInt8](repeating: 0, count: Atlas.side * Atlas.side * 4)
-            tex.getBytes(&px, bytesPerRow: Atlas.side * 4, from: MTLRegionMake2D(0, 0, Atlas.side, Atlas.side), mipmapLevel: 0)
-            let c = CGContext(data: &px, width: Atlas.side, height: Atlas.side, bitsPerComponent: 8, bytesPerRow: Atlas.side * 4,
+            let aw = tex.width, ah = tex.height
+            var px = [UInt8](repeating: 0, count: aw * ah * 4)
+            tex.getBytes(&px, bytesPerRow: aw * 4, from: MTLRegionMake2D(0, 0, aw, ah), mipmapLevel: 0)
+            let c = CGContext(data: &px, width: aw, height: ah, bitsPerComponent: 8, bytesPerRow: aw * 4,
                               space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
             // Flat grey matte so alpha edges are easy to judge.
-            let out = CGContext(data: nil, width: Atlas.side, height: Atlas.side, bitsPerComponent: 8, bytesPerRow: 0,
+            let out = CGContext(data: nil, width: aw, height: ah, bitsPerComponent: 8, bytesPerRow: 0,
                                 space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
             out.setFillColor(CGColor(srgbRed: 0.2, green: 0.36, blue: 0.42, alpha: 1))
-            out.fill(CGRect(x: 0, y: 0, width: Atlas.side, height: Atlas.side))
-            out.draw(c.makeImage()!, in: CGRect(x: 0, y: 0, width: Atlas.side, height: Atlas.side))
+            out.fill(CGRect(x: 0, y: 0, width: aw, height: ah))
+            out.draw(c.makeImage()!, in: CGRect(x: 0, y: 0, width: aw, height: ah))
             try NSBitmapImageRep(cgImage: out.makeImage()!).representation(using: .png, properties: [:])!
                 .write(to: URL(fileURLWithPath: "\(prefix)-atlas.png"))
         }
