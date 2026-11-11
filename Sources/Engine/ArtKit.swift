@@ -297,6 +297,12 @@ struct SpriteDef {
     let name: String
     let w: Int, h: Int
     let paint: (Art) -> Void
+
+    /// Seed for the sprite's random detail, from its name (FNV-1a), so adding or removing a
+    /// sprite leaves every other one as it was.
+    var seed: UInt64 {
+        name.utf8.reduce(14695981039346656037) { ($0 ^ UInt64($1)) &* 1099511628211 }
+    }
 }
 
 final class Atlas {
@@ -323,14 +329,19 @@ final class Atlas {
     }
 
     func frame(_ name: String) -> AtlasFrame {
-        guard let f = frames[name] else { fatalError("missing sprite \(name)") }
+        guard let f = frames[name] else {
+            let stem = String(name.prefix(while: { $0 != "-" }))
+            let near = frames.keys.filter { $0.hasPrefix(stem) }.sorted()
+            fatalError("missing sprite \(name); " + (near.isEmpty ? "no sprite starts with \(stem)" : "similar: \(near.joined(separator: ", "))"))
+        }
         return f
     }
 
     private init(device: MTLDevice, english: Bool) {
         self.english = english
         let side = Atlas.side
-        let defs = Species.spriteDefs(english: english).sorted { $0.h > $1.h }
+        // Ties broken by name so the layout never depends on list order.
+        let defs = Species.spriteDefs(english: english).sorted { $0.h != $1.h ? $0.h > $1.h : $0.name < $1.name }
 
         // Pack first, then size the texture to what the sprites need, so adding species never
         // overflows. Shelves in order of height keep the packing tight.
@@ -346,10 +357,10 @@ final class Atlas {
             x += d.w + Atlas.pad
             shelf = max(shelf, d.h)
         }
-        let height = min(Atlas.maxHeight, y + shelf + Atlas.pad)
+        let height = y + shelf + Atlas.pad
         Atlas.usedHeight = y + shelf
-        if y + shelf + Atlas.pad > Atlas.maxHeight {
-            NSLog("Havbunn: atlas needs %d rows, more than %d", y + shelf + Atlas.pad, Atlas.maxHeight)
+        if height > Atlas.maxHeight {
+            fatalError("atlas needs \(height) rows, more than \(Atlas.maxHeight): raise Atlas.maxHeight or shrink sprites")
         }
 
         let cs = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -360,11 +371,11 @@ final class Atlas {
         ctx.interpolationQuality = .high
 
         let w = Float(side), h = Float(height)
-        for (seed, (d, x, y)) in layout.enumerated() where y + d.h <= height {
+        for (d, x, y) in layout {
             ctx.saveGState()
             ctx.clip(to: CGRect(x: x, y: y, width: d.w, height: d.h))
             ctx.translateBy(x: CGFloat(x), y: CGFloat(y))
-            let art = Art(ctx: ctx, ox: x, oy: y, pxW: d.w, pxH: d.h, seed: UInt64(seed + 1))
+            let art = Art(ctx: ctx, ox: x, oy: y, pxW: d.w, pxH: d.h, seed: d.seed)
             ctx.scaleBy(x: art.k, y: art.k)
             d.paint(art)
             ctx.restoreGState()

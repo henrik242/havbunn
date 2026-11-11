@@ -16,7 +16,18 @@ off, automatic (Norwegian when the system language is Norwegian, otherwise Engli
 Norwegian or English. Latin names are always shown.
 
     make run          # run the built bundle in a window
-    make tools        # also builds build/havbunn-render, an offscreen PNG renderer
+    make tools        # build the offscreen renderer and other tools below
+    make check        # confirm the scene is unchanged, after a refactor
+    make golden       # accept an intended change to the scene
+
+Tools, in `build/` after `make tools`:
+
+- `havbunn-sprite <name|all> <out-dir>`: draws one sprite, such as `torsk` or `hummer-0`,
+  to a PNG.
+- `havbunn-render <Shaders.metal> <out-prefix> [--seed N] ...`: renders frames of the
+  whole scene. Run it without arguments for the options.
+- `havbunn-trace`: the GPU-free scene fingerprint that `make check` compares with
+  `Tools/trace.golden`.
 
 The bundle is ad-hoc signed, which is enough on the machine that built it. To share it,
 build with `SIGN_IDENTITY="Developer ID Application: ..."` and notarize.
@@ -58,8 +69,27 @@ diffuse light, and colours muted with depth. Kelp is sparse, as it is near its d
 Animals are drawn 1.15 times life size so they read on screen.
 
 All species are native to Norwegian waters. Names were checked against Artsdatabanken's
-Artskart and WoRMS. The list, with Norwegian and Latin names, is in
-`Sources/Engine/Species.swift`.
+Artskart and WoRMS. The list is in `Sources/Engine/Species.swift`, and each species has
+its own file in `Sources/Engine/Species/` with its names, sprites, drawing and placement.
+
+## Adding a species
+
+Copy the file of a species that behaves like the new one, change the names, sprites and
+`draw`, and add it to `Species.all`. The key names its main sprite, or `<key>-1` and up for
+variants. The `place` closure picks a behaviour:
+
+- `addLoners`: fish on their own, optionally keeping to a home patch (`Torsk.swift`)
+- `addSchool`: a school (`Sild.swift`)
+- `addRareVisitor`: a fish that now and then passes through (`Laks.swift`)
+- `addJellies`: drifting jellies (`Glassmanet.swift`)
+- `addWalkers`: crustaceans, with sprites `<key>-0` to `<key>-3` as the walk cycle
+  (`Hummer.swift`)
+- `addRester`: bottom animals that rest and now and then move (`Rodspette.swift`)
+- `addFixture`, `addFlat`: rooted or still life (`Sjonellik.swift`, `Korstroll.swift`)
+
+Every species draws from one random sequence in list order, so adding one anywhere changes
+the scene of every seed. That is fine, but run `make golden` afterwards. Check the drawing
+with `build/havbunn-sprite <key> out/`.
 
 ## Layout
 
@@ -67,6 +97,7 @@ Artskart and WoRMS. The list, with Norwegian and Latin names, is in
   deformation, marine snow, light shafts. Compiled by Metal at load, so building needs
   no Metal toolchain.
 - `Sources/Engine/Terrain.swift`: heightfield, shared by the raymarch and animal placement.
-- `Sources/Engine/World.swift`: behaviour, schooling, placement.
-- `Sources/Engine/Art*.swift`: species painting into a texture atlas.
+- `Sources/Engine/World.swift`: behaviour, schooling, and the placement calls species use.
+- `Sources/Engine/Species/*.swift`: one file per species.
+- `Sources/Engine/Art*.swift`: the texture atlas and drawing shared between species.
 - `Sources/Saver/HavbunnView.swift`: the `ScreenSaverView`.

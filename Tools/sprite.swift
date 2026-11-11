@@ -27,7 +27,7 @@ struct Main {
 
         let defs = Species.spriteDefs(english: english)
         let picked = want == "all" ? defs : defs.filter { $0.name == want }
-        if picked.isEmpty { fatalError("no sprite named \(want)") }
+        if picked.isEmpty { fatalError("no sprite named \(want); known: \(defs.map(\.name).sorted().joined(separator: " "))") }
 
         for d in picked {
             let w = Int(Double(d.w) * scale), h = Int(Double(d.h) * scale)
@@ -38,7 +38,7 @@ struct Main {
             ctx.translateBy(x: 0, y: CGFloat(h))
             ctx.scaleBy(x: 1, y: -1)
             ctx.interpolationQuality = .high
-            let art = Art(ctx: ctx, ox: 0, oy: 0, pxW: w, pxH: h, seed: 1)
+            let art = Art(ctx: ctx, ox: 0, oy: 0, pxW: w, pxH: h, seed: d.seed)
             ctx.scaleBy(x: art.k, y: art.k)
             d.paint(art)
 

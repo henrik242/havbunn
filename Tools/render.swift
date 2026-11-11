@@ -8,7 +8,9 @@ import Metal
 struct Main {
     static func main() throws {
         var args = Array(CommandLine.arguments.dropFirst())
-        guard args.count >= 2 else { fatalError("usage") }
+        guard args.count >= 2 else {
+            fatalError("usage: havbunn-render <Shaders.metal> <out-prefix> [--seed N] [--size WxH] [--warm SECONDS] [--frames N] [--gap SECONDS] [--rare] [--english] [--atlas]")
+        }
         let lib = URL(fileURLWithPath: args.removeFirst())
         let prefix = args.removeFirst()
         var seed: UInt64 = 7, w = 2560, h = 1600, warm = 30.0, frames = 1, gap = 5.0, forceRare = false, dumpAtlas = false, english = false

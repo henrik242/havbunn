@@ -1,7 +1,7 @@
 BUILD := build
 SAVER := $(BUILD)/Havbunn.saver
 CONTENTS := $(SAVER)/Contents
-ENGINE := $(wildcard Sources/Engine/*.swift)
+ENGINE := $(wildcard Sources/Engine/*.swift Sources/Engine/Species/*.swift)
 # Apple Silicon only: macOS 26 was the last release for Intel Macs.
 TARGET := 27.0
 SDK := $(shell xcrun --sdk macosx --show-sdk-path)
@@ -16,7 +16,7 @@ BUILD_NUMBER ?=
 DIST_NAME ?= Havbunn
 INSTALL_DIR := $(HOME)/Library/Screen Savers
 
-.PHONY: all saver dist tools install uninstall run clean
+.PHONY: all saver dist tools check golden install uninstall run clean
 
 all: saver
 
@@ -46,7 +46,7 @@ $(CONTENTS)/Info.plist: Resources/Info.plist
 	cp $< $@
 
 # Offscreen frame renderer and a windowed host for the built bundle.
-tools: $(BUILD)/havbunn-render $(BUILD)/havbunn-preview $(BUILD)/havbunn-sprite
+tools: $(BUILD)/havbunn-render $(BUILD)/havbunn-preview $(BUILD)/havbunn-sprite $(BUILD)/havbunn-trace
 
 $(BUILD)/havbunn-render: $(ENGINE) Tools/render.swift
 	@mkdir -p $(BUILD)
@@ -56,6 +56,18 @@ $(BUILD)/havbunn-render: $(ENGINE) Tools/render.swift
 $(BUILD)/havbunn-sprite: $(ENGINE) Tools/sprite.swift
 	@mkdir -p $(BUILD)
 	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name HavbunnSprite -parse-as-library -o $@ $(ENGINE) Tools/sprite.swift
+
+# GPU-free scene fingerprint, to catch unintended changes to placement, behaviour or art.
+$(BUILD)/havbunn-trace: $(ENGINE) Tools/trace.swift
+	@mkdir -p $(BUILD)
+	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name HavbunnTrace -parse-as-library -o $@ $(ENGINE) Tools/trace.swift
+
+check: $(BUILD)/havbunn-trace
+	$(BUILD)/havbunn-trace | diff -u Tools/trace.golden - && echo "Scene unchanged."
+
+# After an intended change to the scene.
+golden: $(BUILD)/havbunn-trace
+	$(BUILD)/havbunn-trace > Tools/trace.golden
 
 $(BUILD)/havbunn-preview: Tools/preview.swift
 	@mkdir -p $(BUILD)

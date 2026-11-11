@@ -1,19 +1,111 @@
 import Foundation
 
-private struct SwimmerSpec {
-    let key: String
+/// A free-swimming fish: a loner, a school member or a rare visitor. Lengths are in metres,
+/// speeds in m/s, `z` is distance from the camera and `alt` height above the bottom.
+struct SwimmerSpec {
     let length: Float
     let speed: Float
-    let zr: ClosedRange<Float>
+    let z: ClosedRange<Float>
     let alt: ClosedRange<Float>
+    /// Body wave amplitude and wavelength in the shader.
     let amp: Float
     let wave: Float
-    let count: Int
-    /// Share of arrivals followed by holding station, for fish that keep to a home patch.
+    /// Loners and schools only.
+    var count = 1
+    /// Loners only: share of arrivals followed by holding station near a home patch.
     var hover: Float = 0
+    /// Loners only: rock-mask range for the home patch.
+    var homeRock: ClosedRange<Float> = 0.35...1.01
+    /// Rare visitors only: tail-beat rate while passing through.
+    var beat: Float = 1.1
+}
+
+enum Gait { case walk, sideways }
+
+/// A crustacean on four-frame walk cycles, keeping near a home spot.
+struct WalkerSpec {
+    let gait: Gait
+    let length, speed: Float
+    let z: ClosedRange<Float>
+    let rock: ClosedRange<Float>
+    let range, maxRock: Float
+    let rest: (Float, Float)
+    var count = 1
+}
+
+/// A bottom animal that lies still and now and then glides or crawls a little way.
+struct ResterSpec {
+    let length, mode, amp: Float
+    let glide: Float
+    let rest: (Float, Float)
+    let z: ClosedRange<Float>
+    let rock: ClosedRange<Float>
+    let lift: Float
+    /// Rock-mask value that ends a glide.
+    var glideRock: Float = 0.5
+    /// Walks or creeps along the bottom: no lift off and no silt puffs.
+    var crawls = false
+}
+
+/// A drifting jelly that pulses up and sinks back.
+struct JellySpec {
+    let count: Int
+    let z, y, width: ClosedRange<Float>
+    let drift: Float
+    let rate: ClosedRange<Float>
+    /// Bell pulse strength in the shader.
+    var pulse: Float = 0.7
+    var opacity: Float = 0.6
+}
+
+/// What a species sees while placing itself in a new scene. Everything it adds is filed under
+/// its key, which also names its main sprite.
+struct Placement {
+    fileprivate let world: World
+    let key: String
+
+    /// The scene's one random sequence, so the whole scene follows from the seed.
+    var rng: RNG {
+        get { world.rng }
+        nonmutating set { world.rng = newValue }
+    }
+
+    /// A seabed spot in view whose rock mask is in `rock`: x, floor height, z.
+    func findSpot(z: ClosedRange<Float>, ndc: ClosedRange<Float> = -1.1...1.1, rock: ClosedRange<Float>) -> (Float, Float, Float)? {
+        world.findSpot(z: z, ndc: ndc, rock: rock)
+    }
+
+    /// The seabed spot at x, z, or nil unless the rock mask there is above `rockAbove`.
+    func ground(_ x: Float, _ z: Float, rockAbove: Float) -> (Float, Float, Float)? {
+        world.ground(x, z, rockAbove: rockAbove)
+    }
+
+    /// Something rooted or lying still, sized by height from its sprite, which defaults to the key.
+    /// Random phase, and random mirror and shade unless given.
+    func addFixture(_ sprite: String? = nil, spot: (Float, Float, Float), height: Float, mode: Float, amp: Float,
+                    ripple: Float = 0, shadowW: Float = 0, tint: C3? = nil, flip: Bool = true, rate: Float = 1) {
+        world.addFixture(key: key, sprite: sprite ?? key, spot: spot, height: height, mode: mode, amp: amp, ripple: ripple,
+                         shadowW: shadowW, tint: tint, flip: flip, rate: rate)
+    }
+
+    /// Something lying flat on the floor, like a starfish, sized by its half extents.
+    func addFlat(spot: (Float, Float, Float), halfW: Float, halfH: Float, flip: Bool, tint: ClosedRange<Float>, shadowW: Float) {
+        world.addFlat(key: key, spot: spot, halfW: halfW, halfH: halfH, flip: flip, tint: tint, shadowW: shadowW)
+    }
+
+    func addLoners(_ spec: SwimmerSpec) { world.addLoners(key: key, spec) }
+    func addSchool(_ spec: SwimmerSpec) { world.addSchool(key: key, spec) }
+    /// A fish that now and then passes through, picked among the rare visitors by weight.
+    func addRareVisitor(_ spec: SwimmerSpec, weight: Double) { world.addRareVisitor(key: key, spec, weight: weight) }
+    func addJellies(_ spec: JellySpec) { world.addJellies(key: key, spec) }
+    /// Needs sprites `<key>-0` to `<key>-3`, the walk cycle.
+    func addWalkers(_ spec: WalkerSpec) { world.addWalkers(key: key, spec) }
+    /// Places one.
+    func addRester(_ spec: ResterSpec) { world.addRester(key: key, spec) }
 }
 
 private final class Fish {
+    let key: String
     let spec: SwimmerSpec
     let frame: AtlasFrame
     let scale: Float
@@ -27,8 +119,8 @@ private final class Fish {
     var tint: C3
     var homeX: Float = 0, homeY: Float = 0, homeZ: Float = 0
     var holdTimer: Float = 0
-    init(spec: SwimmerSpec, frame: AtlasFrame, x: Float, y: Float, z: Float, phase: Float, facing: Float, scale: Float, tint: C3) {
-        self.spec = spec; self.frame = frame
+    init(key: String, spec: SwimmerSpec, frame: AtlasFrame, x: Float, y: Float, z: Float, phase: Float, facing: Float, scale: Float, tint: C3) {
+        self.key = key; self.spec = spec; self.frame = frame
         self.x = x; self.y = y; self.z = z
         self.phase = phase
         self.yaw = facing > 0 ? 0 : .pi
@@ -38,15 +130,15 @@ private final class Fish {
 }
 
 private final class School {
+    let key: String
     let spec: SwimmerSpec
     var members: [Fish] = []
     var cx: Float = 0, cy: Float = 0, cz: Float = 0
     var retarget: Float = 0
-    init(spec: SwimmerSpec) { self.spec = spec }
+    init(key: String, spec: SwimmerSpec) { self.key = key; self.spec = spec }
 }
 
 private final class Walker {
-    enum Gait { case walk, sideways }
     let key: String, frames: [AtlasFrame], gait: Gait
     let length, speed: Float
     var x, z: Float
@@ -56,15 +148,17 @@ private final class Walker {
     var leg: Float = 0
     var heading: Float
     var moving = false
-    var homeX: Float = 0, homeZ: Float = 0, range: Float = 1, maxRock: Float = 0.4
-    var restMin: Float = 3, restMax: Float = 16
-    init(key: String, frames: [AtlasFrame], gait: Gait, length: Float, speed: Float, x: Float, z: Float, facing: Float, heading: Float) {
-        self.key = key; self.frames = frames; self.gait = gait
-        self.length = length; self.speed = speed
+    let homeX, homeZ, range, maxRock: Float
+    let restMin, restMax: Float
+    init(key: String, spec: WalkerSpec, frames: [AtlasFrame], x: Float, z: Float, facing: Float, heading: Float, pause: Float) {
+        self.key = key; self.frames = frames; gait = spec.gait
+        length = spec.length; speed = spec.speed
         self.x = x; self.z = z
+        homeX = x; homeZ = z; range = spec.range; maxRock = spec.maxRock
+        restMin = spec.rest.0; restMax = spec.rest.1
         self.facing = facing
         yaw = facing > 0 ? 0 : .pi
-        pause = 0
+        self.pause = pause
         self.heading = heading
     }
 }
@@ -75,6 +169,7 @@ private final class Rester {
     let mode: Float, amp: Float
     let glideSpeed: Float
     let restMin, restMax: Float
+    let glideRock: Float, crawls: Bool
     var x, z: Float
     var y: Float
     var facing: Float
@@ -85,31 +180,34 @@ private final class Rester {
     var glideAmount: Float = 0
     var dirZ: Float = 0
     let height: Float   // how far the anchor floats above the floor
-    init(key: String, frame: AtlasFrame, length: Float, mode: Float, amp: Float, glideSpeed: Float, rest: (Float, Float),
-         x: Float, z: Float, y: Float, facing: Float, height: Float, timer: Float) {
-        self.key = key; self.frame = frame; self.length = length
-        self.mode = mode; self.amp = amp; self.glideSpeed = glideSpeed
-        restMin = rest.0; restMax = rest.1
+    init(key: String, spec: ResterSpec, frame: AtlasFrame, x: Float, z: Float, y: Float, facing: Float, timer: Float) {
+        self.key = key; self.frame = frame; length = spec.length
+        mode = spec.mode; amp = spec.amp; glideSpeed = spec.glide
+        restMin = spec.rest.0; restMax = spec.rest.1
+        glideRock = spec.glideRock; crawls = spec.crawls
         self.x = x; self.z = z; self.y = y
         self.facing = facing
         yaw = facing > 0 ? 0 : .pi
-        self.height = height
+        height = spec.lift
         self.timer = timer
     }
 }
 
 private final class Jelly {
     let key: String, frame: AtlasFrame, width: Float
+    let pulse, opacity: Float
     var x, y, z: Float
     var vx: Float
     var phase: Float
     let rate: Float
-    init(key: String, frame: AtlasFrame, width: Float, x: Float, y: Float, z: Float, vx: Float, phase: Float, rate: Float) {
+    init(key: String, spec: JellySpec, frame: AtlasFrame, width: Float, x: Float, y: Float, z: Float, vx: Float, phase: Float, rate: Float) {
         self.key = key; self.frame = frame; self.width = width
+        pulse = spec.pulse; opacity = spec.opacity
         self.x = x; self.y = y; self.z = z; self.vx = vx; self.phase = phase; self.rate = rate
     }
 }
 
+/// Something rooted or lying still on the bottom, animated in place by the shader.
 private struct Fixture {
     let key: String
     let frame: AtlasFrame
@@ -128,7 +226,8 @@ private struct Fixture {
 final class World {
     private let terrain: Terrain
     private let atlas: Atlas
-    private var rng: RNG
+    /// Shared with species placement, so the whole scene follows from one seed.
+    fileprivate var rng: RNG
     private let aspect, focal, camY, horizon: Float
     private var time: Float = 0
 
@@ -136,6 +235,7 @@ final class World {
     private var loners: [Fish] = []
     private var rare: Fish?
     private var rareTimer: Float
+    private var rareVisitors: [(key: String, spec: SwimmerSpec, weight: Double)] = []
     private var walkers: [Walker] = []
     private var resters: [Rester] = []
     private var jellies: [Jelly] = []
@@ -188,9 +288,9 @@ final class World {
         puffFrame = atlas.frame("puff")
         flowPhase = Float(seed % 360)
         rareTimer = rng.float(120, 300)
-        populateFixtures()
-        populateSwimmers()
-        populateBottom()
+        // Each species places itself, in list order.
+        for s in Species.all { s.place(Placement(world: self, key: s.key)) }
+        placeLensKelp()
         for _ in 0..<5 {
             guard let s = findSpot(z: 5...12, rock: 0.55...1.01) else { continue }
             mysidAnchors.append(SIMD4(s.0, s.1 + rng.float(0.25, 0.6), s.2, rng.float(0.25, 0.45)))
@@ -205,55 +305,26 @@ final class World {
     private func screenX(_ x: Float, _ z: Float) -> Float { (x / z - pan) * focal / aspect }
 
     /// Looks for a seabed spot in view that satisfies the rock-mask test.
-    private func findSpot(z zr: ClosedRange<Float>, ndc: ClosedRange<Float> = -1.1...1.1,
-                          rock: ClosedRange<Float>, tries: Int = 80) -> (Float, Float, Float)? {
+    fileprivate func findSpot(z zr: ClosedRange<Float>, ndc: ClosedRange<Float> = -1.1...1.1,
+                              rock: ClosedRange<Float>, tries: Int = 80) -> (Float, Float, Float)? {
         for _ in 0..<tries {
             let z = rng.float(zr.lowerBound, zr.upperBound)
             let x = rng.float(ndc.lowerBound, ndc.upperBound) * viewHalfWidth(z)
-            if rock.contains(terrain.rock(x, z)) {
-                return (x, terrain.height(x, z) - 0.03, z)
-            }
+            if rock.contains(terrain.rock(x, z)) { return floorSpot(x, z) }
         }
         return nil
     }
 
-    private func populateFixtures() {
-        func tint(_ low: Float = 0.9, _ high: Float = 1.06) -> C3 {
-            let v = rng.float(low, high)
-            return C3(repeating: v)
-        }
-        func add(_ key: String, _ frameName: String, spot: (Float, Float, Float), height: Float, mode: Float, amp: Float,
-                 ripple: Float = 0, shadowW: Float = 0, tintC: C3? = nil, flip: Bool = true, rate: Float = 1) {
-            let f = atlas.frame(frameName)
-            fixtures.append(Fixture(
-                key: key, frame: f, x: spot.0, y: spot.1, z: spot.2, halfW: height * f.aspect / 2, halfH: height / 2,
-                mode: mode, amp: amp, ripple: ripple, phase: rng.float(0, 6.28),
-                flip: flip && rng.chance(0.5) ? -1 : 1, tint: tintC ?? tint(), shadowW: shadowW, rate: rate))
-        }
+    /// Slightly sunk, so nothing seems to hover over the floor.
+    private func floorSpot(_ x: Float, _ z: Float) -> (Float, Float, Float) { (x, terrain.height(x, z) - 0.03, z) }
 
-        // Reef mounds carry the coral first so nothing else crowds them out.
-        for _ in 0..<24 {
-            guard let s = findSpot(z: 7.5...17, ndc: -0.9...0.9, rock: 0.55...1.01) else { continue }
-            let v = rng.chance(0.1) ? "oyekorall-2" : (rng.chance(0.5) ? "oyekorall-1" : "oyekorall-3")
-            add("oyekorall", v, spot: s, height: rng.float(0.8, 1.5), mode: 0, amp: 0, shadowW: 0.7)
-        }
-        for _ in 0..<5 {
-            guard let s = findSpot(z: 8...20, rock: 0.55...1.01) else { continue }
-            add("sjotre", rng.chance(0.6) ? "sjotre-1" : "sjotre-2", spot: s, height: rng.float(0.8, 1.35), mode: 2, amp: 0.018, shadowW: 0.5)
-        }
+    fileprivate func ground(_ x: Float, _ z: Float, rockAbove: Float) -> (Float, Float, Float)? {
+        terrain.rock(x, z) > rockAbove ? floorSpot(x, z) : nil
+    }
 
-        // Kelp forest on shallower rock.
-        // Kelp thins out to scattered plants at this depth, on the higher rock only.
-        let kelpTint = C3(0.58, 0.62, 0.50)
-        for _ in 0..<7 {
-            guard let s = findSpot(z: 9...24, rock: 0.6...1.01), s.1 > 1.2 else { continue }
-            add("stortare", "stortare-\(rng.int(1, 3))", spot: s, height: rng.float(1.2, 2.0), mode: 2, amp: 0.045, shadowW: 0.3, tintC: kelpTint)
-        }
-        for _ in 0..<3 {
-            guard let s = findSpot(z: 9...20, rock: 0.5...1.01), s.1 > 1.0 else { continue }
-            add("sukkertare", "sukkertare-\(rng.int(1, 2))", spot: s, height: rng.float(1.5, 2.8), mode: 2, amp: 0.12, ripple: 0.05, shadowW: 0.3, tintC: kelpTint)
-        }
-        // Out-of-focus kelp close to the lens frames the shot.
+    /// Out-of-focus kelp close to the lens frames the shot. Here rather than in the kelp files
+    /// because it is placed after every species.
+    private func placeLensKelp() {
         let lensSide: Float = rng.chance(0.5) ? -1 : 1
         for side: Float in [-1, 1] {
             for _ in 0..<(side == lensSide ? rng.int(1, 2) : 0) {
@@ -261,199 +332,106 @@ final class World {
                 let x = side * rng.float(0.82, 1.04) * viewHalfWidth(z)
                 let key = rng.chance(0.5) ? "sukkertare" : "stortare"
                 let name = key == "sukkertare" ? "sukkertare-\(rng.int(1, 2))" : "stortare-\(rng.int(1, 3))"
-                add(key, name, spot: (x, terrain.height(x, z) - 0.03, z), height: rng.float(2.0, 2.6), mode: 2, amp: 0.08, ripple: 0.03,
-                    tintC: C3(0.36, 0.40, 0.34))
+                addFixture(key: key, sprite: name, spot: floorSpot(x, z), height: rng.float(2.0, 2.6), mode: 2, amp: 0.08, ripple: 0.03,
+                           shadowW: 0, tint: C3(0.36, 0.40, 0.34), flip: true, rate: 1)
             }
-        }
-
-        for _ in 0..<6 {
-            guard let c = findSpot(z: 4.2...16, rock: 0.5...1.01) else { continue }
-            let orange = rng.chance(0.3)
-            for _ in 0..<rng.int(3, 6) {
-                let x = c.0 + rng.float(-0.35, 0.35), z = c.2 + rng.float(-0.25, 0.25)
-                guard terrain.rock(x, z) > 0.4 else { continue }
-                add("sjonellik", orange ? "sjonellik-o" : "sjonellik", spot: (x, terrain.height(x, z) - 0.03, z),
-                    height: rng.float(0.18, 0.34), mode: 5, amp: 0.05, shadowW: 0.12)
-            }
-        }
-        for _ in 0..<4 {
-            guard let c = findSpot(z: 4...14, rock: 0.45...1.01) else { continue }
-            for _ in 0..<rng.int(2, 4) {
-                let x = c.0 + rng.float(-0.3, 0.3), z = c.2 + rng.float(-0.2, 0.2)
-                guard terrain.rock(x, z) > 0.4 else { continue }
-                add("dodningehand", "dodningehand", spot: (x, terrain.height(x, z) - 0.03, z),
-                    height: rng.float(0.12, 0.2), mode: 0, amp: 0, shadowW: 0.12)
-            }
-        }
-        for _ in 0..<6 {
-            guard let s = findSpot(z: 3.6...14, rock: 0.2...1.01) else { continue }
-            add("oskjell", "oskjell", spot: s, height: rng.float(0.09, 0.14), mode: 0, amp: 0, shadowW: 0.22)
-        }
-        for _ in 0..<9 {
-            guard let s = findSpot(z: 3.6...14, rock: 0.25...1.01) else { continue }
-            add("drobak", "drobak", spot: s, height: rng.float(0.07, 0.11), mode: 0, amp: 0, shadowW: 0.12, flip: false)
-        }
-        for _ in 0..<5 {
-            guard let s = findSpot(z: 3.6...14, rock: 0.25...1.01) else { continue }
-            add("kraakebolle", "kraakebolle", spot: s, height: rng.float(0.11, 0.16), mode: 0, amp: 0, shadowW: 0.15, flip: false)
-        }
-
-        // Soft bottom life.
-        for _ in 0..<26 {
-            guard let s = findSpot(z: 6...24, rock: 0...0.08) else { continue }
-            add("sjofjaer", "sjofjaer", spot: s, height: rng.float(0.8, 1.5), mode: 2, amp: 0.05)
-        }
-        for _ in 0..<5 {
-            guard let s = findSpot(z: 3.4...10, rock: 0...0.2) else { continue }
-            add("kamskjell", "kamskjell", spot: s, height: rng.float(0.06, 0.09), mode: 0, amp: 0, shadowW: 0.09)
-        }
-        // Squat lobsters keep to crevices at the reef foot; sea cucumbers lie on the soft bottom.
-        for _ in 0..<5 {
-            guard let s = findSpot(z: 4...10, rock: 0.4...0.8) else { continue }
-            add("krinakrabbe", "krinakrabbe", spot: s, height: rng.float(0.09, 0.12), mode: 0, amp: 0, shadowW: 0.07)
-        }
-        for _ in 0..<3 {
-            guard let s = findSpot(z: 4...9, rock: 0...0.08) else { continue }
-            add("rodpolse", "rodpolse", spot: s, height: rng.float(0.08, 0.1), mode: 0, amp: 0, shadowW: 0.14)
         }
     }
 
-    private func populateSwimmers() {
-        let loneSpecs: [SwimmerSpec] = [
-            .init(key: "torsk", length: 0.75, speed: 0.26, zr: 4.2...11, alt: 0.4...1.8, amp: 0.30, wave: 6.5, count: 3, hover: 0.6),
-            .init(key: "lyr", length: 0.55, speed: 0.24, zr: 5...12, alt: 0.8...2.6, amp: 0.30, wave: 6.5, count: 4, hover: 0.7),
-            .init(key: "uer", length: 0.22, speed: 0.08, zr: 6...14, alt: 0.15...0.8, amp: 0.14, wave: 6, count: 10, hover: 0.9),
-            .init(key: "berggylt", length: 0.38, speed: 0.18, zr: 3.9...10, alt: 0.3...1.4, amp: 0.2, wave: 6, count: 2, hover: 0.7),
-            .init(key: "blaastaal", length: 0.26, speed: 0.26, zr: 3.8...9, alt: 0.3...1.5, amp: 0.24, wave: 6, count: 2, hover: 0.5),
-            .init(key: "rognkjeks", length: 0.34, speed: 0.10, zr: 3.8...9, alt: 0.15...0.9, amp: 0.16, wave: 5, count: 1, hover: 0.9),
-            .init(key: "bergnebb", length: 0.15, speed: 0.22, zr: 3.8...8, alt: 0.15...0.9, amp: 0.24, wave: 6, count: 5, hover: 0.6),
-            .init(key: "brosme", length: 0.6, speed: 0.12, zr: 4.5...11, alt: 0.15...0.7, amp: 0.2, wave: 7, count: 2, hover: 0.85),
-            .init(key: "lange", length: 1.0, speed: 0.14, zr: 5...12, alt: 0.2...0.9, amp: 0.22, wave: 7.5, count: 1, hover: 0.9),
-            .init(key: "pigghaa", length: 0.95, speed: 0.55, zr: 5...15, alt: 0.9...3.2, amp: 0.45, wave: 7.5, count: 2),
-        ]
-        for spec in loneSpecs {
-            for _ in 0..<spec.count {
-                let f = makeFish(spec, onScreen: true)
-                // Station keepers get a home patch over rock; redfish favour the reef mound.
-                let rockRange: ClosedRange<Float> = spec.key == "uer" ? 0.6...1.01 : 0.35...1.01
-                if spec.hover > 0, let home = findSpot(z: spec.zr, ndc: -1.0...1.0, rock: rockRange) {
-                    f.homeX = home.0; f.homeZ = home.2
-                    f.homeY = home.1 + rng.float(spec.alt.lowerBound, spec.alt.upperBound)
-                    f.x = f.homeX + rng.float(-1, 1); f.z = f.homeZ; f.y = f.homeY
-                    pickTarget(f)
-                }
-                loners.append(f)
-            }
-        }
-
-        let schoolSpecs: [SwimmerSpec] = [
-            .init(key: "sild", length: 0.30, speed: 0.95, zr: 8...18, alt: 3...7.5, amp: 0.4, wave: 7, count: 80),
-            .init(key: "sei", length: 0.68, speed: 0.72, zr: 6...15, alt: 1.2...4.5, amp: 0.36, wave: 7, count: 11),
-            .init(key: "makrell", length: 0.38, speed: 1.25, zr: 7...17, alt: 3...7, amp: 0.42, wave: 8, count: 10),
-            .init(key: "hvitting", length: 0.3, speed: 0.5, zr: 5...11, alt: 0.6...2.5, amp: 0.38, wave: 7, count: 18),
-        ]
-        for spec in schoolSpecs {
-            let school = School(spec: spec)
-            let z = rng.float(spec.zr.lowerBound, spec.zr.upperBound)
-            school.cx = rng.float(-0.8, 0.8) * viewHalfWidth(z)
-            school.cz = z
-            school.cy = terrain.height(school.cx, z) + rng.float(spec.alt.lowerBound, spec.alt.upperBound)
-            let spread = 0.5 + Float(spec.count).squareRoot() * 0.18
-            let facing: Float = rng.chance(0.5) ? 1 : -1
-            for _ in 0..<spec.count {
-                let f = makeFish(spec, onScreen: true)
-                f.x = school.cx + rng.float(-spread, spread) * 1.7
-                f.y = school.cy + rng.float(-spread, spread) * 0.6
-                f.z = max(3.4, school.cz + rng.float(-spread, spread))
-                f.vx = facing * spec.speed
-                f.yaw = facing > 0 ? 0 : .pi
-                school.members.append(f)
-            }
-            schools.append(school)
-        }
-
-        let moon = atlas.frame("glassmanet"), lion = atlas.frame("brennmanet")
-        for i in 0..<7 {
-            let z = rng.float(6, 20)
-            let x = rng.float(-1.1, 1.1) * viewHalfWidth(z)
-            let isLion = i == 0
-            jellies.append(Jelly(
-                key: isLion ? "brennmanet" : "glassmanet", frame: isLion ? lion : moon,
-                width: isLion ? rng.float(0.5, 0.75) : rng.float(0.2, 0.32),
-                x: x, y: rng.float(2.5, 7), z: z,
-                vx: rng.float(-0.05, 0.05), phase: rng.float(0, 6), rate: isLion ? rng.float(0.8, 1.1) : rng.float(1.3, 1.9)))
-        }
-        let goose = atlas.frame("sjostikkelsbaer")
-        for _ in 0..<14 {
-            let z = rng.float(3.6, 8)
-            jellies.append(Jelly(key: "sjostikkelsbaer", frame: goose, width: rng.float(0.035, 0.05),
-                                 x: rng.float(-1.1, 1.1) * viewHalfWidth(z), y: rng.float(0.8, 4), z: z,
-                                 vx: rng.float(-0.02, 0.02), phase: rng.float(0, 6), rate: rng.float(0.3, 0.6)))
-        }
-    }
-
-    private func makeFish(_ spec: SwimmerSpec, onScreen: Bool) -> Fish {
-        let z = rng.float(spec.zr.lowerBound, spec.zr.upperBound)
+    private func makeFish(key: String, _ spec: SwimmerSpec) -> Fish {
+        let z = rng.float(spec.z.lowerBound, spec.z.upperBound)
         let x = rng.float(-1.2, 1.2) * viewHalfWidth(z)
         let y = terrain.height(x, z) + rng.float(spec.alt.lowerBound, spec.alt.upperBound)
         let v = rng.float(0.93, 1.05)
-        let f = Fish(spec: spec, frame: atlas.frame(spec.key), x: x, y: y, z: z, phase: rng.float(0, 6.28),
+        let f = Fish(key: key, spec: spec, frame: atlas.frame(key), x: x, y: y, z: z, phase: rng.float(0, 6.28),
                      facing: rng.chance(0.5) ? 1 : -1, scale: rng.float(0.85, 1.12), tint: C3(repeating: v))
         pickTarget(f)
         return f
     }
 
-    private func populateBottom() {
-        func frames(_ k: String) -> [AtlasFrame] { (0..<4).map { atlas.frame("\(k)-\($0)") } }
-        func addWalker(_ key: String, gait: Walker.Gait, length: Float, speed: Float, z zr: ClosedRange<Float>, rock: ClosedRange<Float>,
-                       range: Float, maxRock: Float, rest: (Float, Float)) {
-            guard let s = findSpot(z: zr, rock: rock) else { return }
-            let w = Walker(key: key, frames: frames(key), gait: gait, length: length, speed: speed,
-                           x: s.0, z: s.2, facing: rng.chance(0.5) ? 1 : -1, heading: rng.float(0, 6.28))
-            w.homeX = s.0; w.homeZ = s.2; w.range = range; w.maxRock = maxRock
-            w.restMin = rest.0; w.restMax = rest.1
-            w.pause = rng.float(0, rest.1)
-            walkers.append(w)
-        }
-        // Lobster by day: in or at the mouth of a crevice, rarely venturing out.
-        addWalker("hummer", gait: .walk, length: 0.30, speed: 0.04, z: 4...8, rock: 0.3...0.6, range: 0.5, maxRock: 0.75, rest: (20, 70))
-        // Norway lobster near its burrows in the softer, deeper bottom.
-        for _ in 0..<2 { addWalker("sjokreps", gait: .walk, length: 0.15, speed: 0.04, z: 6...10, rock: 0...0.04, range: 0.4, maxRock: 0.1, rest: (10, 45)) }
-        for _ in 0..<2 { addWalker("taskekrabbe", gait: .sideways, length: 0.24, speed: 0.07, z: 3.6...8, rock: 0...0.4, range: 1.5, maxRock: 0.5, rest: (5, 25)) }
+    // MARK: placement, through Placement
 
-        func addRester(_ key: String, length: Float, mode: Float, amp: Float, glide: Float, rest: (Float, Float),
-                       z zr: ClosedRange<Float>, rock: ClosedRange<Float>, lift: Float) {
-            guard let s = findSpot(z: zr, ndc: -0.95...0.95, rock: rock) else { return }
-            resters.append(Rester(key: key, frame: atlas.frame(key), length: length, mode: mode, amp: amp, glideSpeed: glide,
-                                  rest: rest, x: s.0, z: s.2, y: s.1, facing: rng.chance(0.5) ? 1 : -1, height: lift,
-                                  timer: rng.float(5, rest.1)))
-        }
-        addRester("breiflabb", length: 0.85, mode: 1, amp: 0.02, glide: 0, rest: (9999, 9999), z: 4.3...7, rock: 0.05...0.3, lift: -0.03)
-        addRester("rodspette", length: 0.32, mode: 3, amp: 0.05, glide: 0.4, rest: (15, 60), z: 3.6...7, rock: 0...0.08, lift: 0)
-        addRester("lomre", length: 0.3, mode: 3, amp: 0.05, glide: 0.35, rest: (20, 70), z: 4...8, rock: 0...0.08, lift: 0)
-        // Catshark: mostly lying still, now and then a slow swim along the bottom.
-        addRester("rodhai", length: 0.6, mode: 1, amp: 0.05, glide: 0.22, rest: (25, 80), z: 4...9, rock: 0...0.3, lift: 0)
-        // Gurnard walks the sand on its free pectoral rays; the whelk creeps almost without pause.
-        addRester("knurr", length: 0.3, mode: 1, amp: 0.03, glide: 0.08, rest: (4, 14), z: 3.8...8, rock: 0...0.1, lift: 0)
-        addRester("kongsnegl", length: 0.1, mode: 0, amp: 0, glide: 0.012, rest: (1, 5), z: 3.6...7, rock: 0...0.2, lift: 0)
-        addRester("piggskate", length: 0.6, mode: 3, amp: 0.05, glide: 0.45, rest: (25, 90), z: 4...9, rock: 0...0.12, lift: 0)
-        addRester("steinbit", length: 0.7, mode: 1, amp: 0.08, glide: 0.15, rest: (40, 120), z: 4...8, rock: 0.3...0.7, lift: 0)
+    fileprivate func addFixture(key: String, sprite: String, spot: (Float, Float, Float), height: Float, mode: Float, amp: Float,
+                                ripple: Float, shadowW: Float, tint: C3?, flip: Bool, rate: Float) {
+        let f = atlas.frame(sprite)
+        fixtures.append(Fixture(
+            key: key, frame: f, x: spot.0, y: spot.1, z: spot.2, halfW: height * f.aspect / 2, halfH: height / 2,
+            mode: mode, amp: amp, ripple: ripple, phase: rng.float(0, 6.28),
+            flip: flip && rng.chance(0.5) ? -1 : 1, tint: tint ?? C3(repeating: rng.float(0.9, 1.06)), shadowW: shadowW, rate: rate))
+    }
 
-        // Starfish crawl on the same floor, far too slowly to need walk frames.
-        for _ in 0..<7 {
-            guard let s = findSpot(z: 3.4...10, rock: 0...0.6) else { continue }
-            let f = atlas.frame("korstroll")
-            fixtures.append(Fixture(key: "korstroll", frame: f, x: s.0, y: s.1 - 0.012, z: s.2,
-                                    halfW: rng.float(0.13, 0.19), halfH: 0.08, mode: 0, amp: 0, ripple: 0, phase: 0,
-                                    flip: rng.chance(0.5) ? -1 : 1, tint: C3(repeating: rng.float(0.9, 1.08)), shadowW: 0.12, rate: 1))
+    fileprivate func addFlat(key: String, spot: (Float, Float, Float), halfW: Float, halfH: Float, flip: Bool,
+                             tint: ClosedRange<Float>, shadowW: Float) {
+        fixtures.append(Fixture(
+            key: key, frame: atlas.frame(key), x: spot.0, y: spot.1 - 0.012, z: spot.2, halfW: halfW, halfH: halfH,
+            mode: 0, amp: 0, ripple: 0, phase: 0, flip: flip && rng.chance(0.5) ? -1 : 1,
+            tint: C3(repeating: rng.float(tint.lowerBound, tint.upperBound)), shadowW: shadowW, rate: 1))
+    }
+
+    fileprivate func addLoners(key: String, _ spec: SwimmerSpec) {
+        for _ in 0..<spec.count {
+            let f = makeFish(key: key, spec)
+            // Station keepers get a home patch over rock.
+            if spec.hover > 0, let home = findSpot(z: spec.z, ndc: -1.0...1.0, rock: spec.homeRock) {
+                f.homeX = home.0; f.homeZ = home.2
+                f.homeY = home.1 + rng.float(spec.alt.lowerBound, spec.alt.upperBound)
+                f.x = f.homeX + rng.float(-1, 1); f.z = f.homeZ; f.y = f.homeY
+                pickTarget(f)
+            }
+            loners.append(f)
         }
-        for _ in 0..<3 {
-            guard let s = findSpot(z: 3.5...10, rock: 0...0.8) else { continue }
-            let f = atlas.frame("solstjerne")
-            fixtures.append(Fixture(key: "solstjerne", frame: f, x: s.0, y: s.1 - 0.012, z: s.2,
-                                    halfW: rng.float(0.15, 0.21), halfH: 0.09, mode: 0, amp: 0, ripple: 0, phase: 0,
-                                    flip: 1, tint: C3(repeating: rng.float(0.92, 1.05)), shadowW: 0.14, rate: 1))
+    }
+
+    fileprivate func addSchool(key: String, _ spec: SwimmerSpec) {
+        let school = School(key: key, spec: spec)
+        let z = rng.float(spec.z.lowerBound, spec.z.upperBound)
+        school.cx = rng.float(-0.8, 0.8) * viewHalfWidth(z)
+        school.cz = z
+        school.cy = terrain.height(school.cx, z) + rng.float(spec.alt.lowerBound, spec.alt.upperBound)
+        let spread = 0.5 + Float(spec.count).squareRoot() * 0.18
+        let facing: Float = rng.chance(0.5) ? 1 : -1
+        for _ in 0..<spec.count {
+            let f = makeFish(key: key, spec)
+            f.x = school.cx + rng.float(-spread, spread) * 1.7
+            f.y = school.cy + rng.float(-spread, spread) * 0.6
+            f.z = max(3.4, school.cz + rng.float(-spread, spread))
+            f.vx = facing * spec.speed
+            f.yaw = facing > 0 ? 0 : .pi
+            school.members.append(f)
         }
+        schools.append(school)
+    }
+
+    fileprivate func addRareVisitor(key: String, _ spec: SwimmerSpec, weight: Double) {
+        rareVisitors.append((key, spec, weight))
+    }
+
+    fileprivate func addJellies(key: String, _ spec: JellySpec) {
+        let frame = atlas.frame(key)
+        for _ in 0..<spec.count {
+            let z = rng.float(spec.z.lowerBound, spec.z.upperBound)
+            let x = rng.float(-1.1, 1.1) * viewHalfWidth(z)
+            jellies.append(Jelly(
+                key: key, spec: spec, frame: frame, width: rng.float(spec.width.lowerBound, spec.width.upperBound),
+                x: x, y: rng.float(spec.y.lowerBound, spec.y.upperBound), z: z,
+                vx: rng.float(-spec.drift, spec.drift), phase: rng.float(0, 6),
+                rate: rng.float(spec.rate.lowerBound, spec.rate.upperBound)))
+        }
+    }
+
+    fileprivate func addWalkers(key: String, _ spec: WalkerSpec) {
+        let frames = (0..<4).map { atlas.frame("\(key)-\($0)") }
+        for _ in 0..<spec.count {
+            guard let s = findSpot(z: spec.z, rock: spec.rock) else { continue }
+            walkers.append(Walker(key: key, spec: spec, frames: frames, x: s.0, z: s.2, facing: rng.chance(0.5) ? 1 : -1,
+                                  heading: rng.float(0, 6.28), pause: rng.float(0, spec.rest.1)))
+        }
+    }
+
+    fileprivate func addRester(key: String, _ spec: ResterSpec) {
+        guard let s = findSpot(z: spec.z, ndc: -0.95...0.95, rock: spec.rock) else { return }
+        resters.append(Rester(key: key, spec: spec, frame: atlas.frame(key), x: s.0, z: s.2, y: s.1,
+                              facing: rng.chance(0.5) ? 1 : -1, timer: rng.float(5, spec.rest.1)))
     }
 
     // MARK: simulation
@@ -487,7 +465,7 @@ final class World {
             f.retarget = rng.float(20, 50)
             return
         }
-        let z = rng.float(s.zr.lowerBound, s.zr.upperBound)
+        let z = rng.float(s.z.lowerBound, s.z.upperBound)
         // Mostly cross the view, often leaving it for a while.
         let reach = viewHalfWidth(z)
         f.tx = rng.float(-1.45, 1.45) * reach
@@ -557,7 +535,7 @@ final class World {
         s.retarget -= dt
         if s.retarget <= 0 {
             let spec = s.spec
-            let z = rng.float(spec.zr.lowerBound, spec.zr.upperBound)
+            let z = rng.float(spec.z.lowerBound, spec.z.upperBound)
             // Sweep past the screen edge, then come back.
             let side: Float = s.cx > 0 ? -1 : 1
             s.cx = side * rng.float(0.4, 1.8) * viewHalfWidth(z)
@@ -606,26 +584,27 @@ final class World {
             f.x += f.vx * dt
             let fl = terrain.height(f.x, f.z) + 1.2
             f.y += (max(fl, f.ty) - f.y) * min(1, dt * 0.3)
-            f.phase += dt * (f.spec.key == "laks" ? 4.5 : 1.1)
+            f.phase += dt * f.spec.beat
             if abs(f.x) > viewHalfWidth(f.z) * 1.5 + f.spec.length * 0.7 + 1 {
                 rare = nil
                 rareTimer = rng.float(240, 480)
             }
         } else {
             rareTimer -= dt
-            if rareTimer <= 0 {
-                // Salmon passes most often; the Greenland shark and rabbit fish come up from deeper water.
-                let roll = rng.unit()
-                let spec = roll < 0.25
-                    ? SwimmerSpec(key: "haakjerring", length: 3.2, speed: 0.34, zr: 11...16, alt: 1.5...3, amp: 0.18, wave: 5, count: 1)
-                    : roll < 0.5
-                    ? SwimmerSpec(key: "havmus", length: 0.9, speed: 0.22, zr: 7...12, alt: 0.6...2.0, amp: 0.2, wave: 5, count: 1)
-                    : SwimmerSpec(key: "laks", length: 0.8, speed: 0.95, zr: 6...12, alt: 2.5...6, amp: 0.3, wave: 6.5, count: 1)
-                let z = rng.float(spec.zr.lowerBound, spec.zr.upperBound)
+            if rareTimer <= 0, let last = rareVisitors.last {
+                let total = rareVisitors.reduce(0) { $0 + $1.weight }
+                var roll = rng.unit() * total
+                var pick = last
+                for v in rareVisitors {
+                    if roll < v.weight { pick = v; break }
+                    roll -= v.weight
+                }
+                let spec = pick.spec
+                let z = rng.float(spec.z.lowerBound, spec.z.upperBound)
                 let dir: Float = rng.chance(0.5) ? 1 : -1
                 let x = -dir * (viewHalfWidth(z) * 1.45 + spec.length)
                 let y = terrain.height(0, z) + rng.float(spec.alt.lowerBound, spec.alt.upperBound)
-                let f = Fish(spec: spec, frame: atlas.frame(spec.key), x: x, y: y, z: z, phase: 0,
+                let f = Fish(key: pick.key, spec: spec, frame: atlas.frame(pick.key), x: x, y: y, z: z, phase: 0,
                              facing: dir, scale: rng.float(0.9, 1.1), tint: C3(repeating: 1))
                 f.vx = dir * spec.speed
                 f.ty = y
@@ -672,7 +651,7 @@ final class World {
             let nx = r.x + (r.facing * r.glideSpeed) * dt * r.glideAmount
             let nz = r.z + r.dirZ * dt * r.glideAmount
             let edge = abs(nx) > viewHalfWidth(nz) * 1.05
-            if r.timer <= 0 || terrain.rock(nx, nz) > (r.key == "steinbit" ? 0.8 : 0.5) || edge || nz < 3.4 || nz > 11 {
+            if r.timer <= 0 || terrain.rock(nx, nz) > r.glideRock || edge || nz < 3.4 || nz > 11 {
                 r.gliding = false
                 r.timer = rng.float(r.restMin, r.restMax)
                 addPuff(r)
@@ -694,14 +673,14 @@ final class World {
         }
         let target: Float = r.facing > 0 ? 0 : .pi
         r.yaw += max(-2.2 * dt, min(2.2 * dt, target - r.yaw))
-        let lifts: Float = r.key == "knurr" || r.key == "kongsnegl" ? 0 : 1
+        let lifts: Float = r.crawls ? 0 : 1
         r.y = terrain.height(r.x, r.z) + 0.02 + r.height + r.glideAmount * 0.12 * lifts
     }
 
     /// Silt kicked up when a ray or flatfish lifts off or settles.
     private func addPuff(_ r: Rester) {
         // Walkers and crawlers do not stir up the bottom like a ray lifting off.
-        guard puffs.count < 12, r.key != "knurr", r.key != "kongsnegl" else { return }
+        guard puffs.count < 12, !r.crawls else { return }
         puffs.append(Puff(x: r.x, y: terrain.height(r.x, r.z), z: r.z, age: 0, size: r.length * 0.5))
     }
 
@@ -782,14 +761,14 @@ final class World {
                   !hiddenByTerrain(x: x, y: y + size * 0.3, z: z) else { return }
             options.append((key, weight * max(0.1, 14 - z), size, pos))
         }
-        if let r = rare, isVisible(x: r.x, y: r.y, z: r.z, margin: 0.9), !captionHistory.contains(r.spec.key) {
-            captionHistory.append(r.spec.key)
-            return (r.spec.key, r.spec.length * World.creatureScale, { [weak self, weak r] in self?.rare === r ? r.map { SIMD3($0.x, $0.y, $0.z) } : nil })
+        if let r = rare, isVisible(x: r.x, y: r.y, z: r.z, margin: 0.9), !captionHistory.contains(r.key) {
+            captionHistory.append(r.key)
+            return (r.key, r.spec.length * World.creatureScale, { [weak self, weak r] in self?.rare === r ? r.map { SIMD3($0.x, $0.y, $0.z) } : nil })
         }
-        for f in loners { vote(f.spec.key, f.x, f.y, f.z, 2, size: f.spec.length * World.creatureScale, { [f] in SIMD3(f.x, f.y, f.z) }) }
+        for f in loners { vote(f.key, f.x, f.y, f.z, 2, size: f.spec.length * World.creatureScale, { [f] in SIMD3(f.x, f.y, f.z) }) }
         for sc in schools {
             guard let f = sc.members.first else { continue }
-            vote(sc.spec.key, f.x, f.y, f.z, 2, size: 1.2, { [sc] in
+            vote(sc.key, f.x, f.y, f.z, 2, size: 1.2, { [sc] in
                 let n = Float(sc.members.count)
                 return sc.members.reduce(SIMD3<Float>(repeating: 0)) { $0 + SIMD3($1.x, $1.y, $1.z) } / n
             })
@@ -921,8 +900,8 @@ final class World {
             put(Sprite(pos: SIMD4(j.x, j.y, j.z, sin(t * 0.07 + j.z) * 0.14),
                        size: SIMD4(hw, hh, 1, 0),
                        uv: j.frame.uv,
-                       anim: SIMD4(4, j.phase, j.key == "sjostikkelsbaer" ? 0.05 : 0.7, dof(j.z)),
-                       look: SIMD4(j.key == "sjostikkelsbaer" ? 0.5 : 0.6, 0.1, 1, 0),
+                       anim: SIMD4(4, j.phase, j.pulse, dof(j.z)),
+                       look: SIMD4(j.opacity, 0.1, 1, 0),
                        tint: SIMD4(1, 1, 1, 0),
                        light: SIMD4(1, 0.9, 0, 0)))
         }
