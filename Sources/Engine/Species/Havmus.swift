@@ -20,16 +20,21 @@ private func draw(_ a: Art) {
     let bronze = hex(0x8c6a40), irid = hex(0x6d7b62)
     let finRoot = hex(0x5a5143), finTip = hex(0x8a8173)
 
-    // Long whip-like tail filament, drooping to a fine point, with a very low fin fold at its base.
-    let tailLine: [XY] = [(400, 198), (300, 206), (190, 214), (90, 222), (0, 230)]
-    a.taper(tailLine, 30, 1.2, mix(side, back, 0.45))
-    a.fin(base: [(400, 205), (300, 213), (210, 220)], edge: [(398, 215), (300, 221), (212, 225)], root: finRoot, tip: finTip, alpha: 0.4, rays: 0)
+    // Long whip-like tail with a low continuous fin fold running along it, not a bare filament.
+    a.fin(base: [(412, 204), (300, 210), (190, 216), (90, 223), (10, 229)],
+          edge: [(412, 182), (300, 193), (190, 203), (90, 213), (14, 225)],
+          root: finRoot, tip: finTip, alpha: 0.4, rays: 0)
+    a.fin(base: [(412, 206), (300, 214), (190, 222), (90, 228)],
+          edge: [(412, 224), (300, 228), (190, 232), (90, 234)],
+          root: finRoot, tip: finTip, alpha: 0.3, rays: 0)
+    let tailLine: [XY] = [(412, 203), (300, 210), (190, 216), (90, 223), (0, 231)]
+    a.taper(tailLine, 28, 1.4, mix(side, back, 0.5))
 
     // Long low second dorsal fin hugging the back from behind the first dorsal to the tail joint.
-    // The base is tucked a little into the back so the membrane emerges flush under the body.
-    let d2base: [XY] = [(730, 114), (600, 140), (480, 170), (412, 194)]
-    let d2edge: [XY] = [(730, 84), (600, 110), (480, 142), (412, 172)]
-    a.fin(base: d2base, edge: d2edge, root: finRoot, tip: finTip, alpha: 0.55, rays: 20)
+    let d2base: [XY] = [(730, 112), (600, 138), (480, 168), (412, 192)]
+    let d2edge: [XY] = [(730, 80), (600, 106), (480, 138), (412, 168)]
+    a.fin(base: d2base, edge: d2edge, root: finRoot, tip: finTip, alpha: 0.62, rays: 22)
+    a.line(d2edge, mix(finTip, hex(0xcfc7ba), 0.4), 0.45, 2)   // a soft upper edge so the fin reads
 
     // Tall triangular first dorsal fin, trailing behind the spine.
     a.fin(base: [(802, 94), (862, 112)], edge: [(804, 24), (834, 40), (862, 110)], root: finRoot, tip: finTip, alpha: 0.82, rays: 11)
