@@ -8,6 +8,10 @@
 	<string>Havbunn</string>
 	<key>CFBundleExecutable</key>
 	<string>Havbunn</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>no.synth.havbunn</string>
 	<key>CFBundleInfoDictionaryVersion</key>

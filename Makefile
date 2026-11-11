@@ -18,12 +18,13 @@ BUILD_NUMBER ?=
 DIST_NAME ?= Havbunn
 INSTALL_DIR := $(HOME)/Applications
 
-.PHONY: all app dist tools check golden install uninstall run clean
+.PHONY: all app dist tools icon check golden install uninstall run clean
 
 all: app
 
 # The app carries the screen saver as an app extension. Sign inside out.
-app: $(APPEX)/Contents/MacOS/Havbunn $(APPEX)/Contents/Resources/Shaders.metal $(APPEX)/Contents/Resources/Assets.car $(APP)/Contents/MacOS/Havbunn
+app: $(APPEX)/Contents/MacOS/Havbunn $(APPEX)/Contents/Resources/Shaders.metal $(APPEX)/Contents/Resources/Assets.car \
+		$(APP)/Contents/MacOS/Havbunn $(APP)/Contents/Resources/AppIcon.icns
 	@cp Resources/Extension-Info.plist $(APPEX)/Contents/Info.plist
 	@cp Resources/App-Info.plist $(APP)/Contents/Info.plist
 	@for p in $(APPEX)/Contents/Info.plist $(APP)/Contents/Info.plist; do \
@@ -58,9 +59,22 @@ $(APPEX)/Contents/Resources/Assets.car: $(wildcard Resources/Assets.xcassets/*/*
 	xcrun actool Resources/Assets.xcassets --compile $(@D) --platform macosx --minimum-deployment-target $(TARGET) \
 		--output-partial-info-plist $(BUILD)/assets-info.plist > /dev/null
 
+$(APP)/Contents/Resources/AppIcon.icns: $(wildcard Resources/AppAssets.xcassets/*/* Resources/AppAssets.xcassets/*)
+	@mkdir -p $(@D)
+	xcrun actool Resources/AppAssets.xcassets --compile $(@D) --platform macosx --minimum-deployment-target $(TARGET) \
+		--app-icon AppIcon --output-partial-info-plist $(BUILD)/app-assets-info.plist > /dev/null
+
 $(APP)/Contents/MacOS/Havbunn: Sources/App/main.swift
 	@mkdir -p $(@D)
 	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name HavbunnApp -o $@ Sources/App/main.swift
+
+# Redraws the app icon from the species sprites. The PNGs are committed.
+icon: $(BUILD)/havbunn-icon
+	$(BUILD)/havbunn-icon Resources/AppAssets.xcassets/AppIcon.appiconset
+
+$(BUILD)/havbunn-icon: $(ENGINE) Tools/icon.swift
+	@mkdir -p $(BUILD)
+	$(SWIFTC) -target arm64-apple-macos$(TARGET) -module-name HavbunnIcon -parse-as-library -o $@ $(ENGINE) Tools/icon.swift
 
 # Offscreen frame renderer, a windowed host for the saver view, and inspection tools.
 tools: $(BUILD)/havbunn-render $(BUILD)/havbunn-preview $(BUILD)/havbunn-sprite $(BUILD)/havbunn-trace

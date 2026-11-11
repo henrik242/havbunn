@@ -36,6 +36,9 @@ Tools, in `build/` after `make tools`:
 - `havbunn-trace`: the GPU-free scene fingerprint that `make check` compares with
   `Tools/trace.golden`.
 
+`make icon` redraws the app icon from the species sprites into
+`Resources/AppAssets.xcassets`, using `Tools/icon.swift`. The PNGs are committed.
+
 To share a build, also notarize it.
 
 ## Downloads
@@ -124,4 +127,4 @@ with `build/havbunn-sprite <key> out/`.
   the OpenGL layer that shows its frames.
 - `Sources/Extension/`: the app extension's classes and the private header.
 - `Sources/App/main.swift`: the app that carries the extension.
-- `Resources/`: Info.plists, the extension's entitlements, and the thumbnail.
+- `Resources/`: Info.plists, the extension's entitlements, the thumbnail and the app icon.
