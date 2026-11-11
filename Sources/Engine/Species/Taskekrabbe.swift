@@ -34,19 +34,30 @@ private func draw(_ a: Art, frame: Int) {
             a.line([foot, (foot.0 + side * 6, foot.1 + 14)], hex(0x151110), 1, 6, smooth: false)
         }
     }
-    // Claws in front, with black tips.
+    // Big claws held forward, each a swollen hand ending in a black-tipped pincer.
     for side in [-1.0, 1.0] {
-        let x = cx + side * 150, y = cy + 90
-        a.taper([(cx + side * 90, cy + 66), (x, y + 8), (x + side * 8, y + 28)], 44, 34, leg)
-        a.fill([(x - 42, y + 12), (x + 42, y + 8), (x + 56, y + 56), (x + 14, y + 96), (x - 40, y + 68)], shell * 1.1)
-        a.softDot(x - side * 6, y + 34, 38, hex(0xdc9264), 0.55)
-        a.fill([(x + 10, y + 84), (x - 16, y + 118), (x - 26, y + 72)], hex(0x14100e))
-        a.fill([(x - 26, y + 72), (x - 36, y + 106), (x - 46, y + 62)], hex(0x14100e))
+        let hx = cx + side * 156, hy = cy + 96      // hand (propodus) centre
+        // Upper arm (merus) from the shell to the hand.
+        a.taper([(cx + side * 96, cy + 58), (cx + side * 150, cy + 62), (hx + side * 4, hy - 30)], 46, 40, leg * 0.9)
+        // Swollen hand.
+        a.disc(hx, hy, 50, shell * 0.9, 1, sy: 0.92)
+        a.disc(hx, hy, 45, shell * 1.06, 1, sy: 0.92)
+        a.softDot(hx - side * 12, hy - 16, 28, hex(0xe0996b), 0.5)
+        // Two pincer fingers, slightly agape, with the brown crab's black tips.
+        let fixed = (hx + side * 8, hy + 94)        // fixed finger (lower)
+        let dactyl = (hx - side * 26, hy + 82)      // movable finger (upper)
+        let fBase = (hx + side * 10, hy + 28), dBase = (hx - side * 12, hy + 20)
+        a.taper([fBase, ((fBase.0 + fixed.0) / 2 + side * 5, (fBase.1 + fixed.1) / 2), fixed], 30, 6, shell)
+        a.taper([dBase, ((dBase.0 + dactyl.0) / 2 - side * 4, (dBase.1 + dactyl.1) / 2), dactyl], 24, 5, shell * 0.92)
+        a.taper([((fBase.0 + fixed.0) / 2, (fBase.1 + fixed.1) / 2), fixed], 15, 4, hex(0x14100e))
+        a.taper([((dBase.0 + dactyl.0) / 2, (dBase.1 + dactyl.1) / 2), dactyl], 12, 3, hex(0x14100e))
     }
-    // Carapace with pie-crust front edge.
-    a.polar(cx: cx, cy: cy, sy: 0.54, maxR: 236, radius: { th in
-        let crust = th > 0 ? 8 * abs(sin(th * 11)) : 0
-        return 212 + crust
+    // Carapace with the diagnostic pie-crust scalloped front margin.
+    a.polar(cx: cx, cy: cy, sy: 0.54, maxR: 240, radius: { th in
+        // Lobes run along the antero-lateral (lower) margin, th in (0, pi).
+        let front = smooth(0.12, 0.6, th) * (1 - smooth(2.54, 3.02, th))
+        let crust = front * 22 * pow(abs(sin(th * 9)), Float(0.7))
+        return 206 + crust
     }) { r, th, x, y in
         var c = mix(hex(0xbb6d44), shell, smooth(0.0, 0.9, r))
         c = mix(c, edge, smooth(0.88, 1, r))
