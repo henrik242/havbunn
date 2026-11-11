@@ -11,42 +11,119 @@ extension Species {
         })
 }
 
-/// Anglerfish lying on the bottom: broad flat head, wide closed mouth with the lower jaw
-/// jutting, eyes on top, fringed edge, lure on the snout.
+/// Anglerfish seen from above, lying on the bottom: enormous broad flat head dominated by a
+/// wide upward gaping mouth ringed with slender back-curved teeth, a dorsal illicium tipped
+/// with an esca lure over the snout, tiny eyes high on the head, broad limb-like pectorals,
+/// a tassel fringe breaking the whole body margin, and mottled brown camouflage.
 private func draw(_ a: Art) {
-    let skin = hex(0x6f5a3f), dark = hex(0x3e321d), pale = hex(0xb7a582)
-    a.fin(base: [(150, 352), (130, 380), (150, 408)], edge: [(10, 300), (0, 380), (20, 450)], root: dark, tip: skin, alpha: 0.75, rays: 12)
-    a.fin(base: [(250, 330), (420, 300)], edge: [(250, 280), (330, 240), (430, 262)], root: dark, tip: skin, alpha: 0.7, rays: 10)
-    let top: [XY] = [(140, 345), (250, 320), (390, 295), (520, 262), (680, 235), (820, 232), (925, 252), (985, 300)]
-    let bottom: [XY] = [(140, 395), (250, 405), (390, 420), (520, 440), (680, 455), (820, 452), (925, 430), (990, 372)]
+    let skin = hex(0x6f5a3f), dark = hex(0x332a18), pale = hex(0xb3a079)
+    let marble = hex(0x2a2213), lureC = hex(0xbcac84)
+
+    // Tail and the soft second dorsal / anal pair, muted so the head carries the shape.
+    a.fin(base: [(150, 358), (128, 388), (150, 418)], edge: [(8, 300), (0, 388), (16, 462)], root: dark, tip: skin, alpha: 0.8, rays: 12)
+    a.fin(base: [(300, 318), (440, 304)], edge: [(300, 262), (372, 240), (448, 266)], root: dark, tip: skin, alpha: 0.6, rays: 9)
+    a.fin(base: [(300, 432), (440, 446)], edge: [(300, 486), (372, 508), (448, 482)], root: dark, tip: skin, alpha: 0.6, rays: 9)
+
+    // Broad body: widest across the head on the right, tapering to a slim tail on the left.
+    let top: [XY] = [(140, 350), (220, 328), (330, 310), (460, 282), (590, 252), (710, 234), (812, 230), (902, 244), (966, 288)]
+    let bottom: [XY] = [(140, 392), (220, 412), (330, 432), (460, 458), (590, 476), (710, 482), (812, 478), (902, 452), (970, 392)]
     a.body(top: top, bottom: bottom) { _, v, x, y in
-        var c = mix(skin, pale, smooth(0.7, 1.0, v))
-        let m = artNoise.fbm(x * 0.015, y * 0.02, 4)
-        c = mix(c, dark, smooth(0.35, 0.75, m) * 0.55)
-        c = mix(c, hex(0x9a8560), smooth(0.58, 0.76, artNoise.fbm(x * 0.04 + 9, y * 0.05, 3)) * 0.5)
-        c *= 1 - spots(x, y, cell: 15, radius: 3.6, keep: 0.4) * 0.22
-        return rgba(c * (0.70 + 0.34 * roundLight(v)))
+        var c = skin
+        // Large marbled dark blotches, the angler's camouflage.
+        let m = artNoise.fbm(x * 0.0095, y * 0.012, 5)
+        c = mix(c, marble, smooth(0.40, 0.70, m) * 0.62)
+        c = mix(c, dark, smooth(0.52, 0.80, artNoise.fbm(x * 0.02 + 5, y * 0.026, 4)) * 0.4)
+        // Paler mottling in the gaps, then fine freckles.
+        c = mix(c, pale, smooth(0.60, 0.82, artNoise.fbm(x * 0.03 + 9, y * 0.04, 3)) * 0.42)
+        c *= 1 - spots(x, y, cell: 16, radius: 3.2, keep: 0.42) * 0.18
+        c = mix(c, pale * 0.5, spots(x + 7, y - 4, cell: 34, radius: 4.5, keep: 0.8) * 0.3)
+        // Thin translucent paling right at the outer margin, where the fringe grows.
+        let edge = min(v, 1 - v)
+        c = mix(mix(pale, skin, 0.4), c, smooth(0.0, 0.16, edge))
+        return rgba(c * (0.72 + 0.30 * roundLight(v)))
     }
-    // Rounded pectoral behind the head.
-    a.fin(base: [(560, 360), (585, 420)], edge: [(470, 410), (490, 470), (580, 480)], root: skin * 0.85, tip: hex(0x8c7756), alpha: 0.8, rays: 9)
-    // Closed mouth along the front, lower jaw ahead of the upper.
-    a.line([(990, 336), (930, 350), (840, 352), (760, 340)], hex(0x1c140f), 0.8, 7)
-    a.fill([(998, 344), (990, 364), (930, 368), (900, 356), (940, 352)], hex(0x7c6748))
-    for i in 0..<6 {
-        let x = 980 - Double(i) * 16
-        a.fill([(x - 4, 350), (x, 336 - Double(i % 2) * 4), (x + 4, 350)], hex(0xa89f88), 0.9, raw: true)
+
+    // Tassel fringe breaking the outline all the way around.
+    fringe(a, top, outward: -1, seed: 3)
+    fringe(a, bottom, outward: 1, seed: 17)
+
+    // Broad limb-like pectoral splayed out behind the head.
+    a.fin(base: [(560, 448), (648, 456)], edge: [(520, 516), (602, 536), (666, 500)], root: skin * 0.82, tip: hex(0x8c7a58), alpha: 0.85, rays: 8)
+    // The far-side pectoral just showing above the back behind the head.
+    a.fin(base: [(548, 292), (628, 282)], edge: [(548, 246), (592, 232), (636, 254)], root: skin * 0.72, tip: hex(0x80704f), alpha: 0.5, rays: 6)
+
+    // The enormous upward gape: a dark cavity ringed with teeth, lower jaw jutting forward.
+    mouth(a)
+
+    // Illicium (mobile dorsal spine) tipped with a fleshy esca lure over the snout.
+    a.line([(846, 256), (864, 206), (892, 172), (916, 160)], lureC, 0.95, 4.5)
+    a.softDot(918, 156, 17, hex(0xd2c4a0), 0.5)
+    a.disc(918, 156, 8.5, lureC)
+    a.taper([(918, 156), (928, 142), (922, 128)], 7, 1.5, lureC, 0.9)
+    a.taper([(918, 156), (906, 143), (910, 130)], 6, 1.5, lureC, 0.9)
+    // A shorter second cephalic spine behind it.
+    a.line([(770, 236), (782, 206), (800, 192)], lureC, 0.8, 3.2)
+
+    // Tiny eyes set high on the head.
+    a.eye(792, 298, 11, iris: hex(0xa6904f))
+    a.eye(758, 292, 9.5, iris: hex(0x8b7644))
+}
+
+/// Tasselled dermal fringe along a body-margin polyline, flaps pointing outward.
+private func fringe(_ a: Art, _ margin: [XY], outward: Double, seed: Int32) {
+    let cv = chaikin(margin, closed: false, iterations: 2)
+    let n = 34
+    for i in 0..<n {
+        let idx = Double(i) / Double(n - 1) * Double(cv.count - 1)
+        let lo = Int(idx), hi = min(cv.count - 1, lo + 1)
+        let f = idx - Double(lo)
+        let x = cv[lo].0 + (cv[hi].0 - cv[lo].0) * f
+        let y = cv[lo].1 + (cv[hi].1 - cv[lo].1) * f
+        let h = artNoise.hash(Int32(i) &+ seed, seed &* 7)
+        let len = 7 + Double(h) * 16 + (i % 4 == 0 ? 9 : 0)
+        let wig = (Double(artNoise.hash(Int32(i) &+ 5, seed)) - 0.5) * 12
+        let col = h > 0.55 ? hex(0x9a8862) : hex(0x5a4a32)
+        a.taper([(x, y), (x + wig, y + outward * len * 0.55), (x + wig * 1.4, y + outward * len)], 6.5, 1.2, col, 0.85)
     }
-    // Skin fringe along the jaw and flanks.
-    for i in 0..<30 {
-        let t = Double(i) / 29
-        let x = 170 + t * 810, y = 404 + 46 * sin(min(1, t * 1.15) * 1.7) - t * t * 50
-        let len = 10 + (i % 4 == 0 ? 18.0 : 6.0)
-        a.taper([(x, y), (x + 4, y + len * 0.6), (x - 2, y + len)], 7, 1.4, i % 2 == 0 ? hex(0x5f4e35) : hex(0x9b8862), 0.85)
+}
+
+/// The wide gaping mouth: dark throat, jaw rim and many slender back-curved teeth.
+private func mouth(_ a: Art) {
+    let mouthC = hex(0x120f0a), throat = hex(0x5f4537), teethC = hex(0xc7bc9b)
+    // Cavity bulging forward, lower jaw jutting past the snout on the right.
+    let rim: [XY] = [
+        (846, 300), (882, 270), (938, 258), (992, 274), (1018, 316),
+        (1022, 352), (1018, 390), (992, 432), (938, 448), (882, 436), (846, 404), (856, 352),
+    ]
+    a.fill(rim, mouthC, 0.96)
+    // Glistening throat deep in the gape, off-centre so it doesn't read as a wheel.
+    a.softDot(942, 352, 62, throat, 0.5, sy: 1.08)
+    a.softDot(966, 352, 34, hex(0x241810), 0.6, sy: 1.12)
+    // Pale rim/lip just inside the jaw line, top and bottom.
+    a.line([(882, 270), (938, 262), (992, 278)], hex(0x493929), 0.5, 5)
+    a.line([(882, 436), (938, 444), (992, 428)], hex(0x493929), 0.5, 5)
+    // A palisade of irregular, slender, back-curved teeth around the front and sides.
+    toothRing(a, 930, 352, rx: 92, ry: 95, count: 26, from: -2.0, to: 2.0, col: teethC, seed: 1)
+    // A sparse scatter of longer fangs breaking the row.
+    toothRing(a, 930, 352, rx: 90, ry: 93, count: 9, from: -1.6, to: 1.6, col: teethC * 0.95, seed: 40)
+}
+
+/// One ring of teeth on an elliptical jaw rim. Angle, radius and length are jittered so the
+/// row reads as an irregular palisade of fangs, each swept back toward the throat.
+private func toothRing(_ a: Art, _ cx: Double, _ cy: Double, rx: Double, ry: Double,
+                       count: Int, from: Double, to: Double, col: C3, seed: Int32) {
+    for i in 0...count {
+        let h1 = artNoise.hash(Int32(i) &+ seed, seed &* 3)
+        let h2 = artNoise.hash(Int32(i) &* 2 &+ seed, seed &+ 11)
+        let h3 = artNoise.hash(Int32(i) &+ 7, seed &* 5)
+        let th = from + (to - from) * (Double(i) + (Double(h1) - 0.5) * 0.7) / Double(count)
+        let rr = 1 + (Double(h2) - 0.5) * 0.14
+        let lenF = 0.34 + Double(h3) * 0.30                 // tip radius: varies fang length
+        let bx = cx + cos(th) * rx * rr, by = cy + sin(th) * ry * rr
+        // Tip swept inward and back toward the throat (toward the body, -x).
+        let tx = cx + cos(th) * rx * lenF - 16, ty = cy + sin(th) * ry * lenF + sin(th) * 6
+        let mx = cx + cos(th) * rx * 0.68 - 6, my = cy + sin(th) * ry * 0.68 + sin(th) * 4
+        let w = 6.5 + Double(h1) * 4
+        a.taper([(bx, by), (mx, my), (tx, ty)], w, 1.2, col, 0.9)
     }
-    // Lure rod and flap, eyes high on the head.
-    a.line([(880, 250), (905, 190), (950, 160), (982, 170)], hex(0xa8976f), 0.95, 4.5)
-    a.taper([(982, 170), (974, 192), (984, 206)], 20, 3, hex(0xd5c7a3))
-    a.line([(800, 240), (812, 210), (830, 198)], hex(0xa8976f), 0.8, 3.4)
-    a.eye(770, 252, 14, iris: hex(0xa88f50))
-    a.eye(735, 246, 11, iris: hex(0x8a7543))
 }
