@@ -14,17 +14,63 @@ extension Species {
         })
 }
 
+private let sunArms: Float = 12
+
+/// Scalloped margin: many short, broad arms around a large central disc.
+private func sunRadius(_ th: Float) -> Float {
+    let u = (cos(sunArms * th) + 1) * 0.5           // 1 at arm tip, 0 at notch
+    let arm = pow(u, 1.2)                             // broad arms, rounded notches
+    // Gentle per-arm irregularity so the outline isn't a perfect cog.
+    let wob = (artNoise.value(cos(th) * 2.3 + 11, sin(th) * 2.3 + 4) - 0.5) * 24
+    return 312 + 132 * arm + wob
+}
+
+/// Concentric colour rings (bullseye), muted for fjord twilight — never pure white.
+private func sunBands(_ r: Float) -> C3 {
+    let stops: [(Float, C3)] = [
+        (0.00, hex(0xcab08f)),   // pale centre around the madreporite
+        (0.10, hex(0x8a3b2f)),   // dark red ring hugging the centre
+        (0.25, hex(0xc4a985)),   // cream band
+        (0.38, hex(0xb0492f)),   // red band
+        (0.53, hex(0xc3a582)),   // cream band
+        (0.67, hex(0xb9542f)),   // warm orange-red band
+        (0.81, hex(0xc6aa88)),   // cream band
+        (1.00, hex(0x973d29)),   // deep red margin
+    ]
+    var c = stops[0].1
+    for i in 1..<stops.count {
+        c = mix(c, stops[i].1, smooth(stops[i - 1].0, stops[i].0, r))
+    }
+    return c
+}
+
 private func draw(_ a: Art) {
-    let arms: Float = 11
-    a.polar(cx: 500, cy: 310, sy: 0.62, maxR: 490, radius: { th in
-        260 + 215 * pow(abs(cos(arms * 0.5 * th)), 2.2)
+    let cx = 500.0, cy = 310.0
+    a.polar(cx: cx, cy: cy, sy: 0.62, maxR: 480, radius: { th in
+        sunRadius(th)
     }) { r, th, x, y in
-        let inner = r < 0.52
-        var c = inner ? hex(0xe35f4a) : hex(0xc73224)
-        c = mix(c, hex(0xf6e1cf), smooth(0.34, 0.5, r) * (1 - smooth(0.52, 0.70, r)))
-        let arm = pow(abs(cos(arms * 0.5 * th)), 8)
-        if !inner { c = mix(c, hex(0xf9dfc9), arm * 0.3) }
-        c = mix(c, hex(0xf4c7b0), spots(x, y, cell: 16, radius: 4.5, keep: 0.8) * 0.65)
-        return rgba(c * (1.12 - 0.36 * r))
+        // Bands bow outward over each arm, so the rings read as chevrons along the arms.
+        // The bow fades out near the centre, leaving the disc as clean concentric rings
+        // (no pinwheel / starburst at the core).
+        let u = (cos(sunArms * th) + 1) * 0.5
+        let rr = clamp01(r - 0.055 * Float(u) * smooth(0.18, 0.55, r))
+        var c = sunBands(rr)
+
+        // Felted paxillae: dense tufts of fine spines, each a lit crown over a shadowed pit.
+        let felt = spots(x, y, cell: 9, radius: 3.1, keep: 1, seed: 1)
+        let felt2 = spots(x, y, cell: 13, radius: 4.3, keep: 0.85, seed: 7)
+        let pit = (1 - felt) * (1 - felt2)
+        c = mix(c, c * 0.8, pit * 0.5)                       // shadowed pits between tufts
+        let crown = max(felt, felt2 * 0.8)
+        c = mix(c, mix(c, hex(0xd7c29f), 0.55), crown * 0.5) // pale warm lit crowns
+        // Micro grain over the whole felt.
+        let g = artNoise.fbm(x * 0.12, y * 0.2, 3)
+        c = mix(c, c * (0.9 + 0.2 * g), 0.5)
+
+        // Gentle dome and a soft overhead light from the upper-left — no harsh starburst.
+        let dome = 1.06 - 0.24 * r * r
+        let ly = (y - Float(cy)) / 300, lx = (x - Float(cx)) / 300
+        let lit = 1 + 0.07 * (-ly - lx * 0.5)
+        return rgba(c * dome * lit)
     }
 }

@@ -7,7 +7,10 @@ extension Species {
         key: "drobak", norsk: "Drøbaksjøpiggsvin", latin: "Strongylocentrotus droebachiensis", english: "Green sea urchin",
         sprites: [
             SpriteDef(name: "drobak", w: 240, h: 170) {
-                BenthosArt.urchin($0, deep: hex(0x2c3f25), light: hex(0x7f9861), spine: hex(0x94a66e), length: 170, count: 300, width: 8)
+                BenthosArt.urchin($0, deep: hex(0x2c3f25), light: hex(0x7f9861), spine: hex(0x92a46c),
+                                  length: 150, count: 430, width: 6.5,
+                                  tipWidth: 1.0, tipPale: 0.5,
+                                  tubercleN: 80, tubercleR: 6, tubercleA: 0.28)
             },
         ],
         place: { scene in

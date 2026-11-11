@@ -114,31 +114,100 @@ enum BenthosArt {
 
     // MARK: urchins
 
-    /// Sea urchin, shared by both species with their own colours and spines.
-    static func urchin(_ a: Art, deep: C3, light: C3, spine: C3, length: Double, count: Int, width: Double) {
-        let cx = 500.0, cy = 430.0, R = 280.0
-        // Back spines, then dome, then front spines for depth.
-        func spines(front: Bool) {
-            for _ in 0..<count {
-                let th = a.rng.range(.pi, 2 * .pi)
-                let ring = a.rng.unit()
-                let rx = R * (front ? ring : 1)
-                let bx = cx + cos(th) * rx
-                let by = cy + sin(th) * R * (front ? 0.72 * ring : 0.82)
-                let dx = (bx - cx) / R, dy = (by - cy) / R - (front ? 0.45 : 0.15)
-                let len = length * a.rng.range(0.8, 1.15)
-                let tip = (bx + dx * len, by + dy * len)
-                a.taper([(bx, by), ((bx + tip.0) / 2, (by + tip.1) / 2), tip], width, 1.2, front ? spine : spine * 0.62)
-            }
+    /// A single radiating spine: one sphere point, projected with foreshortening.
+    private struct Spine {
+        var bx, by, ox, oy, px, py, depth, w, fore: Double
+    }
+
+    /// Sea urchin: a domed test seen at a low angle, with spines radiating all the
+    /// way round. Each spine sits on a point of a squashed sphere and is foreshortened
+    /// by how far it leans toward the viewer, so rim spines are long and near-face ones
+    /// shrink to stubs — revealing the test and its pale tubercles between them.
+    ///
+    /// - length/count/width: spine reach, how many, base thickness.
+    /// - tipWidth/tipPale: blunt vs needle tips, and how much paler the tips go.
+    /// - tubercleN/tubercleR/tubercleA: pale bumps dotting the test's near face.
+    static func urchin(_ a: Art, deep: C3, light: C3, spine: C3,
+                       length: Double, count: Int, width: Double,
+                       tipWidth: Double = 1.2, tipPale: Float = 0.45,
+                       tubercleN: Int = 110, tubercleR: Double = 8, tubercleA: Double = 0.35) {
+        let cx = 500.0, cy = a.unitH / 2, R = 236.0
+        let tilt = 0.58                       // low-angle view: looking slightly down
+        let cosT = cos(tilt), sinT = sin(tilt)
+        let sy = cosT                         // the test's vertical squash falls out of the tilt
+        let pale = mix(spine, hex(0xf0ece2), tipPale)   // sun-bleached spine tips
+        let paleBack = mix(spine * 0.62, hex(0x9a9a8c), tipPale * 0.5)
+        let bump = mix(light, hex(0xf2ece0), 0.4)       // tubercle cap
+
+        // Lay every spine out once, then sort by depth so they stack back-to-front.
+        var spines: [Spine] = []
+        spines.reserveCapacity(count)
+        for _ in 0..<count {
+            let az = a.rng.range(0, 2 * .pi)
+            let el = asin(a.rng.range(-1, 1))           // uniform over the sphere
+            let ce = cos(el), se = sin(el)
+            let vx = ce * cos(az), vy = se, vz = ce * sin(az)
+            let up = vy * cosT - vz * sinT              // screen-up component (world up)
+            let depth = vy * sinT + vz * cosT           // +toward viewer
+            let bx = cx + R * vx, by = cy - R * up
+            let len = length * a.rng.range(0.78, 1.10)
+            // Projected offset keeps the foreshortening: |(vx,-up)| = sqrt(1-depth^2).
+            let ox = len * vx, oy = -len * up
+            let bend = a.rng.range(-1, 1) * len * 0.05
+            let m = max(1e-4, (ox * ox + oy * oy).squareRoot())
+            let px = -oy / m * bend, py = ox / m * bend // sideways kink at the midpoint
+            let fore = (max(0, 1 - depth * depth)).squareRoot()   // 1 at the rim, 0 head-on
+            spines.append(Spine(bx: bx, by: by, ox: ox, oy: oy, px: px, py: py,
+                                depth: depth, w: width * a.rng.range(0.82, 1.18), fore: fore))
         }
-        spines(front: false)
-        a.polar(cx: cx, cy: cy, sy: 0.82, maxR: R, radius: { th in th > 0 ? Float(R) * (1 - 0.72 * sin(th)) : Float(R) }) { r, th, x, y in
-            var c = mix(light, deep, r)
-            c *= 0.84 + 0.3 * artNoise.fbm(x * 0.06, y * 0.06, 2)
-            let meridian = abs(sin(th * 5))
-            c *= 0.9 + 0.14 * meridian
-            return rgba(c * (1.1 - 0.5 * pow(r, 3)))
+        spines.sort { $0.depth < $1.depth }
+
+        func draw(_ s: Spine, base: C3, tip: C3) {
+            let mx = s.bx + s.ox * 0.5 + s.px, my = s.by + s.oy * 0.5 + s.py
+            let tx = s.bx + s.ox, ty = s.by + s.oy
+            a.taper([(s.bx, s.by), (mx, my), (tx, ty)], s.w, tipWidth, base)
+            // Bleached tips only where the spine lies across the view; head-on stubs
+            // keep the base colour so they don't flare into a bright central burst.
+            let t = mix(base, tip, Float(s.fore))
+            a.taper([(mx, my), ((mx + tx) / 2 + s.px * 0.5, (my + ty) / 2 + s.py * 0.5), (tx, ty)],
+                    s.w * 0.6, tipWidth, t)
         }
-        spines(front: true)
+
+        // Spines on the far side sit behind the body; draw them first and dimmer.
+        for s in spines where s.depth < 0 { draw(s, base: spine * 0.6, tip: paleBack) }
+
+        // The test: a domed sphere, lit soft from the upper left.
+        let lx: Float = -0.42, ly: Float = -0.52, lz: Float = 0.74   // screen x, y(down), toward
+        a.polar(cx: cx, cy: cy, sy: sy, maxR: R, radius: { _ in Float(R) }) { r, th, x, y in
+            let nx = cos(th) * r, ny = sin(th) * r
+            let nz = (max(0, 1 - r * r)).squareRoot()
+            let diff = clamp01(nx * lx + ny * ly + nz * lz)
+            var c = mix(deep, light, clamp01(0.22 + 0.9 * diff))
+            c = mix(c, deep * 0.8, clamp01(pow(r, 3) * 0.7))        // shaded rim
+            let meridian = abs(sin(th * 5))                         // faint five-fold sections
+            c *= 0.95 + 0.07 * meridian
+            c *= 0.9 + 0.2 * artNoise.fbm(x * 0.05, y * 0.05, 2)    // mottled skin
+            return rgba(c)
+        }
+
+        // Pale tubercles scattered over the near face, showing between the spines.
+        for _ in 0..<tubercleN {
+            let az = a.rng.range(0, 2 * .pi)
+            let el = asin(a.rng.range(-1, 1))
+            let ce = cos(el), se = sin(el)
+            let vx = ce * cos(az), vy = se, vz = ce * sin(az)
+            let up = vy * cosT - vz * sinT
+            let depth = vy * sinT + vz * cosT
+            if depth <= 0.08 { continue }
+            let bx = cx + R * vx * 0.985, by = cy - R * up * 0.985
+            let sz = tubercleR * (0.55 + 0.6 * depth)
+            // A soft-edged bump: shadow halo below, pale rounded cap, soft top light.
+            a.softDot(bx, by + sz * 0.18, sz * 1.15, deep, tubercleA * 0.55, sy: sy)
+            a.softDot(bx, by - sz * 0.06, sz, bump, tubercleA, sy: sy)
+            a.softDot(bx - sz * 0.18, by - sz * 0.22, sz * 0.5, pale, tubercleA * 0.5, sy: sy)
+        }
+
+        // Near-side spines on top, full brightness.
+        for s in spines where s.depth >= 0 { draw(s, base: spine, tip: pale) }
     }
 }
