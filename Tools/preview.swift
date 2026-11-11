@@ -1,10 +1,8 @@
-// Loads the built .saver the way a host does and runs it in a window.
-// Usage: havbunn-preview <path-to-saver> [--seconds N] [--screen I] [--undersized] [--all-screens] [--orphans N]
-// --screen covers that display with a borderless window. --undersized starts the view at
-// half size inside its container, the way a confused host might.
+// Runs the saver view in a window, the way the system hosts it. Run from the repository root,
+// since it reads the shader source from Sources/Shaders.
+// Usage: havbunn-preview [--seconds N] [--screen I] [--all-screens]
+// --screen covers that display with a borderless window.
 // --all-screens runs one view per display in this process, as the system host does.
-// --orphans N first starts N views and detaches them without stopping them, which is what
-// the system host leaves behind between activations, then measures a fresh view.
 // With --seconds it quits by itself and reports whether frames were produced.
 import AppKit
 import ScreenSaver
@@ -13,68 +11,23 @@ import ScreenSaver
 struct Main {
     static func main() {
         var args = Array(CommandLine.arguments.dropFirst())
-        let path = args.isEmpty ? "build/Havbunn.saver" : args.removeFirst()
         var seconds: Double? = nil
-        var screenIndex: Int? = nil, undersized = false, allScreens = false, orphans = 0
+        var screenIndex: Int? = nil, allScreens = false
         while !args.isEmpty {
             let a = args.removeFirst()
             switch a {
             case "--seconds": seconds = Double(args.removeFirst())
             case "--screen": screenIndex = Int(args.removeFirst())
-            case "--undersized": undersized = true
             case "--all-screens": allScreens = true
-            case "--orphans": orphans = Int(args.removeFirst()) ?? 0
             default: print("unknown \(a)"); exit(2)
             }
         }
 
-        guard let bundle = Bundle(path: path), bundle.load(), let cls = bundle.principalClass as? ScreenSaverView.Type else {
-            print("FAIL: could not load principal class from \(path)")
-            exit(1)
-        }
-        print("loaded principal class:", NSStringFromClass(cls))
+        HavbunnView.shaderURL = URL(fileURLWithPath: "Sources/Shaders/Shaders.metal")
+        let cls: ScreenSaverView.Type = HavbunnView.self
 
         let app = NSApplication.shared
         app.setActivationPolicy(seconds == nil ? .regular : .accessory)
-        if orphans > 0 {
-            let size = NSRect(x: 0, y: 0, width: 1280, height: 800)
-            var old: [ScreenSaverView] = []
-            var windows: [NSWindow] = []
-            for _ in 0..<orphans {
-                let w = NSWindow(contentRect: size, styleMask: [.titled], backing: .buffered, defer: false)
-                guard let v = cls.init(frame: size, isPreview: false) else { exit(1) }
-                w.contentView = v
-                w.orderFrontRegardless()
-                v.startAnimation()
-                old.append(v)
-                windows.append(w)
-            }
-            let measure = seconds ?? 6
-            Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in
-                for w in windows { w.contentView = nil; w.orderOut(nil) }
-                let w = NSWindow(contentRect: size, styleMask: [.titled], backing: .buffered, defer: false)
-                w.title = "fresh view"
-                guard let v = cls.init(frame: size, isPreview: false) else { exit(1) }
-                w.contentView = v
-                w.center()
-                w.orderFrontRegardless()
-                v.startAnimation()
-                windows.append(w)
-                old.append(v)
-                // Let the fresh view finish its bake before counting.
-                Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-                    let a = v.value(forKey: "framesPresented") as? Int ?? 0
-                    let t0 = Date()
-                    Timer.scheduledTimer(withTimeInterval: measure, repeats: false) { _ in
-                        let b = v.value(forKey: "framesPresented") as? Int ?? 0
-                        print("fresh view with \(orphans) orphans: \(Int(Double(b - a) / Date().timeIntervalSince(t0))) fps")
-                        exit(0)
-                    }
-                }
-            }
-            app.run()
-        }
-
         if allScreens {
             var keep: [(NSWindow, ScreenSaverView)] = []
             for screen in NSScreen.screens {
@@ -109,19 +62,11 @@ struct Main {
             window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             window.title = "Havbunn preview"
         }
-        let viewFrame = undersized ? NSRect(origin: .zero, size: NSSize(width: frame.width / 2, height: frame.height / 2)) : frame
-        guard let view = cls.init(frame: viewFrame, isPreview: false) else {
+        guard let view = cls.init(frame: frame, isPreview: false) else {
             print("FAIL: view init returned nil")
             exit(1)
         }
-        print("configure sheet:", view.hasConfigureSheet)
-        if undersized {
-            let container = NSView(frame: frame)
-            container.addSubview(view)
-            window.contentView = container
-        } else {
-            window.contentView = view
-        }
+        window.contentView = view
         if target == nil { window.center() }
         print("window number:", window.windowNumber)
         window.makeKeyAndOrderFront(nil)
@@ -142,9 +87,9 @@ struct Main {
                     print("ran \(ticks) timer ticks, presented \(frames) frames (\(Int(Double(frames) / seconds)) fps), resident \(mem) MB")
                     print(String(format: "cpu: %.1f%% of one core, startup included", cpu / seconds * 100))
                     print("geometry:", view.value(forKey: "diagnostics") as? String ?? "?")
-                    DistributedNotificationCenter.default().post(name: NSNotification.Name("com.apple.screensaver.willstop"), object: nil)
+                    view.stopAnimation()
                     RunLoop.main.run(until: Date().addingTimeInterval(0.5))
-                    print("after willstop, resident \(residentMB()) MB")
+                    print("after stop, resident \(residentMB()) MB")
                     exit(0)
                 }
             }

@@ -1,85 +1,42 @@
 import AppKit
+import IOSurface
 import Metal
 import QuartzCore
 import ScreenSaver
-import os
 
-// NSLog output from the system host does not reach the unified log; Logger does.
-private let saverLog = Logger(subsystem: "no.havbunn.screensaver", category: "saver")
-
+/// The scene on one display, run by the screen saver extension and by the preview tool.
 @objc(HavbunnView)
 public final class HavbunnView: ScreenSaverView {
-    private static let languageKey = "captionLanguage"
+    /// The preview tool has no bundle and points this at the source tree.
+    static var shaderURL = Bundle(for: HavbunnView.self).url(forResource: "Shaders", withExtension: "metal")
 
     private var renderer: Renderer?
-    private let metalLayer = CAMetalLayer()
-    private var lastTime: CFTimeInterval = 0
+    /// Frames render with Metal into IOSurfaces, and an OpenGL backing layer shows them, the
+    /// way Apple's OpenGL savers draw. The system hosts the view remotely at the main display's
+    /// scale; a CAMetalLayer, a contents swap or an OpenGL sublayer then updates only a quarter
+    /// of a 1x display beside a 2x one.
+    private let surfaceLayer = SurfaceGLLayer()
+    private var device: MTLDevice?
+    private var surfaces: [(surface: IOSurface, texture: MTLTexture)] = []
+    private var nextSurface = 0
+    private var running = false
     private var preparing = false
-    private var stopped = false
-    private var sheet: NSWindow?
-    private var namesPopup: NSPopUpButton?
+    private var lastTime: CFTimeInterval = 0
+    private var loggedBounds = NSRect.zero
     /// Read by the preview tool to confirm frames reach the layer.
     @objc public private(set) var framesPresented = 0
 
-    // The host creates new views at each activation and never releases the old ones.
-    private static let instances = NSHashTable<HavbunnView>.weakObjects()
     private static var nextID = 1
-    private static let generationWindow: CFTimeInterval = 2
     private let instanceID: Int = {
         defer { HavbunnView.nextID += 1 }
         return HavbunnView.nextID
     }()
-    private var startedAt: CFTimeInterval = 0
-
-    // A stalled drawable wait blocks the main thread that every view shares, so back off.
-    private var drawableStalls = 0
-    private var nextDrawableAttempt: CFTimeInterval = 0
 
     // Timing since the last report.
     private var reportAt: CFTimeInterval = 0
-    private var ticks = 0
     private var reportFrames = 0
     private var waitTotal: CFTimeInterval = 0
     private var waitMax: CFTimeInterval = 0
-    private var nilDrawables = 0
-    private var skippedForStall = 0
-
-    /// ScreenSaverDefaults accepts writes but drops them on macOS 27, so settings live in a
-    /// plist in the host's sandbox home, shared by the options sheet and the running saver.
-    private static let settingsURL = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent("Library/Application Support/Havbunn/settings.plist")
-
-    private static func setting(_ key: String) -> Int? {
-        (NSDictionary(contentsOf: settingsURL) as? [String: Any])?[key] as? Int
-    }
-
-    private static func setSetting(_ key: String, _ value: Int) {
-        var all = (NSDictionary(contentsOf: settingsURL) as? [String: Any]) ?? [:]
-        all[key] = value
-        do {
-            try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try (all as NSDictionary).write(to: settingsURL)
-        } catch {
-            saverLog.error("settings not saved: \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    /// 0 off, 1 automatic, 2 Norwegian, 3 English.
-    private static var captionLanguage: Int {
-        get { setting(languageKey) ?? 1 }
-        set { setSetting(languageKey, newValue) }
-    }
-
-    private static var englishNames: Bool {
-        switch captionLanguage {
-        case 2: return false
-        case 3: return true
-        default:
-            let lang = Locale.preferredLanguages.first.map { String($0.prefix(2)) } ?? "en"
-            return !["nb", "nn", "no"].contains(lang)
-        }
-    }
-
 
     public override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
@@ -91,114 +48,88 @@ public final class HavbunnView: ScreenSaverView {
         setUp()
     }
 
+    /// The OpenGL layer is the view's own backing layer, so AppKit and the host size it and
+    /// set its scale.
+    public override func makeBackingLayer() -> CALayer { surfaceLayer }
+
     private func setUp() {
         wantsLayer = true
-        layer?.backgroundColor = CGColor(srgbRed: 0.016, green: 0.1, blue: 0.15, alpha: 1)
-        // A sublayer, not the backing layer: AppKit and the host manage the backing layer's
-        // scale, and on mixed-DPI setups that can disagree with the drawable. The resize
-        // gravity makes the picture fill the layer whatever the drawable size is.
-        metalLayer.pixelFormat = Renderer.pixelFormat
-        metalLayer.framebufferOnly = true
-        metalLayer.isOpaque = true
-        metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
-        metalLayer.contentsGravity = .resize
-        metalLayer.frame = bounds
-        layer?.addSublayer(metalLayer)
         animationTimeInterval = 1.0 / 60.0
-        // legacyScreenSaver can keep stopped instances alive, so release GPU work explicitly.
-        DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(hostWillStop),
-            name: NSNotification.Name("com.apple.screensaver.willstop"), object: nil)
     }
 
-    deinit {
-        DistributedNotificationCenter.default().removeObserver(self)
-    }
-
+    // The host calls startAnimation once per view, but releases views without stopAnimation,
+    // so the window decides too.
     public override func startAnimation() {
-        stopped = false
-        startedAt = CACurrentMediaTime()
-        retireEarlierGenerations()
-        HavbunnView.instances.add(self)
-        saverLog.notice("start #\(self.instanceID, privacy: .public) live=\(HavbunnView.liveCount, privacy: .public) \(self.diagnostics, privacy: .public)")
         super.startAnimation()
-        prepareIfNeeded()
+        start()
     }
 
     public override func stopAnimation() {
+        stop()
         super.stopAnimation()
     }
 
-    private static var liveCount: Int { instances.allObjects.filter { !$0.stopped }.count }
-
-    /// Views started together belong to one activation, one per display. Anything of the
-    /// same kind from an earlier activation is no longer on screen.
-    private func retireEarlierGenerations() {
-        for other in HavbunnView.instances.allObjects where other !== self && other.isPreview == isPreview && !other.stopped {
-            if startedAt - other.startedAt > HavbunnView.generationWindow {
-                saverLog.notice("retiring #\(other.instanceID, privacy: .public)")
-                other.hostWillStop()
-            }
-        }
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { stop() } else { start() }
     }
 
-    @objc private func hostWillStop() {
-        stopped = true
-        super.stopAnimation()
+    private func start() {
+        guard !running else { return }
+        running = true
+        saverLog.notice("start #\(self.instanceID, privacy: .public) \(self.diagnostics, privacy: .public)")
+        prepareIfNeeded()
+    }
+
+    private func stop() {
+        guard running else { return }
+        running = false
         let r = renderer
         renderer = nil
         preparing = false
         r?.tearDown()
+        surfaces = []
+        surfaceLayer.publish(nil)
     }
 
-    /// The system host runs the view in a proxy window with no screen, whose backing scale
-    /// comes from the main display. Find the real display by size.
+    /// The host runs the view in a proxy window with no screen, whose backing scale comes
+    /// from the main display. Find the real display by size.
     private var hostedScreen: NSScreen? {
         guard let w = window, w.screen == nil else { return nil }
         return NSScreen.screens.first { $0.frame.size == bounds.size }
     }
 
+    /// The scene renders at the display's real scale; the layer scales it to the host's.
     private var displayScale: CGFloat {
         hostedScreen?.backingScaleFactor ?? window?.screen?.backingScaleFactor ?? window?.backingScaleFactor
             ?? NSScreen.main?.backingScaleFactor ?? 2
     }
 
-    private func pixelSize() -> (Int, Int) {
-        (Int(bounds.width * displayScale), Int(bounds.height * displayScale))
-    }
+    /// The host does not say whether a view is the System Settings preview, so judge by size.
+    private var isSmall: Bool { bounds.width < 800 }
 
     /// One line describing the geometry, logged at each start and read by the preview tool.
     @objc public var diagnostics: String {
         let screen = window?.screen
-        return "preview=\(isPreview) bounds=\(bounds.size) superview=\(superview?.bounds.size ?? .zero) "
-            + "window=\(window?.frame.size ?? .zero) screen=\(screen?.localizedName ?? "nil") "
-            + "screenFrame=\(screen?.frame.size ?? .zero) scale=\(displayScale) "
-            + "layer=\(metalLayer.frame.size) contentsScale=\(metalLayer.contentsScale) drawable=\(metalLayer.drawableSize)"
-    }
-
-    /// The host can hand a view the wrong frame on a display whose scale differs from the
-    /// main display, so follow the container when it is larger.
-    private func matchContainer() {
-        guard !isPreview, let container = superview?.bounds, container.width > bounds.width || container.height > bounds.height else { return }
-        frame = container
+        return "bounds=\(bounds.size) window=\(window?.frame.size ?? .zero) screen=\(screen?.localizedName ?? hostedScreen.map { "\($0.localizedName) (by size)" } ?? "nil") "
+            + "scale=\(displayScale) windowScale=\(window?.backingScaleFactor ?? 0) fps=\(Int((1 / animationTimeInterval).rounded())) "
+            + "surface=\(surfaces.first.map { "\($0.texture.width)x\($0.texture.height)" } ?? "none")"
     }
 
     private func prepareIfNeeded() {
-        guard renderer == nil, !preparing, !stopped else { return }
-        let (w, h) = pixelSize()
+        guard running, renderer == nil, !preparing else { return }
+        let w = Int(bounds.width * displayScale), h = Int(bounds.height * displayScale)
         guard w > 0, h > 0 else { return }
-        let bundle = Bundle(for: HavbunnView.self)
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let url = bundle.url(forResource: "Shaders", withExtension: "metal") else {
+        guard let device = MTLCreateSystemDefaultDevice(), let url = HavbunnView.shaderURL else {
             saverLog.error("no Metal device or shader source")
             return
         }
-        metalLayer.device = device
+        self.device = device
         preparing = true
         let seed = UInt64.random(in: 1...UInt64.max)
         // Captions are unreadable at preview size.
-        let names = HavbunnView.captionLanguage != 0 && !isPreview
-        let english = HavbunnView.englishNames
+        let names = Settings.captionLanguage != 0 && !isSmall
+        let english = Settings.englishNames
         // Shader compile, atlas and terrain bake take a fraction of a second; keep them off the main thread.
         Task { [weak self] in
             let built = await Task.detached(priority: .userInitiated) { () -> Renderer? in
@@ -225,28 +156,24 @@ public final class HavbunnView: ScreenSaverView {
     }
 
     public override func animateOneFrame() {
-        guard !stopped else { return }
-        matchContainer()
-        let ml = metalLayer
+        super.animateOneFrame()
+        guard running else { return }
         let scale = displayScale
-        let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
-        let target = bounds
-        if ml.frame != target || ml.contentsScale != scale || ml.drawableSize != size {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            ml.frame = target
-            ml.contentsScale = scale
-            if size.width > 0, size.height > 0 { ml.drawableSize = size }
-            CATransaction.commit()
+        let w = Int(bounds.width * scale), h = Int(bounds.height * scale)
+        if bounds != loggedBounds {
+            loggedBounds = bounds
+            // On a display whose scale differs from the host's, the host keeps up with full
+            // updates at 30 fps but at 60 refreshes only a quarter of the display live.
+            animationTimeInterval = scale == (window?.backingScaleFactor ?? scale) ? 1.0 / 60.0 : 1.0 / 30.0
             saverLog.notice("geometry #\(self.instanceID, privacy: .public) \(self.diagnostics, privacy: .public)")
         }
-        guard size.width > 0, size.height > 0 else { return }
+        guard w > 0, h > 0 else { return }
         guard let r = renderer, r.isPrepared else {
             prepareIfNeeded()
             return
         }
         // The seabed is baked for one aspect ratio, so a late resize needs a new bake.
-        if abs(r.preparedAspect - Float(size.width / size.height)) > 0.02 {
+        if abs(r.preparedAspect - Float(w) / Float(h)) > 0.02 {
             renderer = nil
             r.tearDown()
             prepareIfNeeded()
@@ -254,37 +181,53 @@ public final class HavbunnView: ScreenSaverView {
         }
 
         let now = CACurrentMediaTime()
-        ticks += 1
         report(now)
-        if now < nextDrawableAttempt {
-            skippedForStall += 1
-            return
-        }
         let dt = lastTime == 0 ? 1.0 / 60.0 : now - lastTime
         lastTime = now
 
+        if surfaces.first.map({ $0.texture.width != w || $0.texture.height != h }) ?? true {
+            surfaces = makeSurfaces(width: w, height: h)
+            nextSurface = 0
+        }
+        guard !surfaces.isEmpty else { return }
+        let frame = surfaces[nextSurface]
+        nextSurface = (nextSurface + 1) % surfaces.count
+
         autoreleasepool {
             let waitStart = CACurrentMediaTime()
-            let next = ml.nextDrawable()
+            var drew = false
+            r.draw(to: frame.texture, dt: dt) { cmd in
+                cmd.commit()
+                // The layer must not show a surface the GPU is still writing.
+                cmd.waitUntilCompleted()
+                drew = true
+            }
             let wait = CACurrentMediaTime() - waitStart
             waitTotal += wait
             waitMax = max(waitMax, wait)
-            if wait > 0.1 || next == nil {
-                drawableStalls += 1
-                nextDrawableAttempt = waitStart + wait + min(8, 0.25 * pow(2, Double(drawableStalls)))
-            } else {
-                drawableStalls = 0
-            }
-            guard let drawable = next else {
-                nilDrawables += 1
-                return
-            }
-            r.draw(to: drawable.texture, dt: dt) { cmd in
-                cmd.present(drawable)
-                cmd.commit()
-            }
+            guard drew else { return }
+            surfaceLayer.publish(frame.surface)
+            surfaceLayer.setNeedsDisplay()
             framesPresented += 1
             reportFrames += 1
+        }
+    }
+
+    /// Three surfaces, so the one on screen is never the one being drawn.
+    private func makeSurfaces(width: Int, height: Int) -> [(surface: IOSurface, texture: MTLTexture)] {
+        guard let device, width > 0, height > 0 else { return [] }
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)?.copyPropertyList()
+        return (0..<3).compactMap { _ in
+            guard let surface = IOSurface(properties: [
+                .width: width, .height: height, .bytesPerElement: 4,
+                .pixelFormat: UInt32(0x42475241),  // 'BGRA', matching Renderer.pixelFormat
+            ]) else { return nil }
+            if let srgb { IOSurfaceSetValue(surface, kIOSurfaceColorSpace, srgb) }
+            let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Renderer.pixelFormat, width: width, height: height, mipmapped: false)
+            td.usage = [.renderTarget]
+            td.storageMode = .shared
+            guard let texture = device.makeTexture(descriptor: td, iosurface: surface, plane: 0) else { return nil }
+            return (surface, texture)
         }
     }
 
@@ -292,72 +235,12 @@ public final class HavbunnView: ScreenSaverView {
         if reportAt == 0 { reportAt = now }
         let span = now - reportAt
         guard span >= 5 else { return }
-        let visible = window?.occlusionState.contains(.visible) ?? false
-        let attached = window != nil && superview != nil
-        saverLog.debug("perf #\(self.instanceID, privacy: .public) preview=\(self.isPreview, privacy: .public) live=\(HavbunnView.liveCount, privacy: .public) attached=\(attached, privacy: .public) visible=\(visible, privacy: .public) ticks/s=\(Int(Double(self.ticks) / span), privacy: .public) fps=\(Int(Double(self.reportFrames) / span), privacy: .public) waitAvgMs=\(Int(self.waitTotal / max(1, Double(self.ticks)) * 1000), privacy: .public) waitMaxMs=\(Int(self.waitMax * 1000), privacy: .public) nil=\(self.nilDrawables, privacy: .public) skipped=\(self.skippedForStall, privacy: .public)")
+        saverLog.debug("perf #\(self.instanceID, privacy: .public) fps=\(Int(Double(self.reportFrames) / span), privacy: .public) gpuWaitAvgMs=\(Int(self.waitTotal / max(1, Double(self.reportFrames)) * 1000), privacy: .public) gpuWaitMaxMs=\(Int(self.waitMax * 1000), privacy: .public)")
         reportAt = now
-        ticks = 0
         reportFrames = 0
         waitTotal = 0
         waitMax = 0
-        nilDrawables = 0
-        skippedForStall = 0
     }
 
     public override func draw(_ rect: NSRect) {}
-
-    // MARK: options sheet
-
-    public override var hasConfigureSheet: Bool { true }
-
-    public override var configureSheet: NSWindow? {
-        let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 120),
-                             styleMask: [.titled], backing: .buffered, defer: true)
-        panel.isReleasedWhenClosed = false
-        let content = panel.contentView!
-        let label = NSTextField(labelWithString: "Species names:")
-        label.alignment = .right
-        label.frame = NSRect(x: 20, y: 72, width: 110, height: 20)
-        content.addSubview(label)
-        let popup = NSPopUpButton(frame: NSRect(x: 136, y: 66, width: 200, height: 28), pullsDown: false)
-        popup.addItems(withTitles: ["Off", "Automatic", "Norwegian", "English"])
-        popup.selectItem(at: HavbunnView.captionLanguage)
-        content.addSubview(popup)
-        let ok = NSButton(title: "OK", target: self, action: #selector(closeSheet))
-        ok.keyEquivalent = "\r"
-        ok.frame = NSRect(x: 256, y: 16, width: 84, height: ok.intrinsicContentSize.height)
-        content.addSubview(ok)
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelSheet))
-        cancel.keyEquivalent = "\u{1b}"
-        cancel.frame = NSRect(x: 160, y: 16, width: 84, height: cancel.intrinsicContentSize.height)
-        content.addSubview(cancel)
-        namesPopup = popup
-        sheet = panel
-        return panel
-    }
-
-    @objc private func cancelSheet() {
-        namesPopup = nil
-        closeSheet()
-    }
-
-    @objc private func closeSheet() {
-        if let popup = namesPopup {
-            let wasEnglish = HavbunnView.englishNames
-            HavbunnView.captionLanguage = popup.indexOfSelectedItem
-            // Apply to every live view; a language change needs new caption textures.
-            for v in HavbunnView.instances.allObjects where !v.stopped {
-                if HavbunnView.englishNames != wasEnglish, let r = v.renderer {
-                    v.renderer = nil
-                    r.tearDown()
-                    v.prepareIfNeeded()
-                } else {
-                    v.renderer?.showNames = HavbunnView.captionLanguage != 0 && !v.isPreview
-                }
-            }
-        }
-        guard let s = sheet else { return }
-        if let parent = s.sheetParent { parent.endSheet(s) } else { s.close() }
-        sheet = nil
-    }
 }

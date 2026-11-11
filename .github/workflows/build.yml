@@ -80,8 +80,9 @@ jobs:
             BUILD_NUMBER="$GITHUB_RUN_NUMBER" \
             DIST_NAME="${{ steps.version.outputs.dist_name }}" \
             SIGN_IDENTITY="$SIGN_IDENTITY"
-          codesign --verify --deep --strict --verbose=2 build/Havbunn.saver
-          test "$(lipo -archs build/Havbunn.saver/Contents/MacOS/Havbunn)" = arm64
+          codesign --verify --deep --strict --verbose=2 build/Havbunn.app
+          test "$(lipo -archs build/Havbunn.app/Contents/MacOS/Havbunn)" = arm64
+          test "$(lipo -archs build/Havbunn.app/Contents/PlugIns/Havbunn.appex/Contents/MacOS/Havbunn)" = arm64
 
       - name: Notarize
         env:
@@ -95,10 +96,10 @@ jobs:
           xcrun notarytool submit "build/$DIST_NAME.zip" \
             --key "$key" --key-id "$API_KEY_ID" --issuer "$API_ISSUER_ID" --wait
           rm "$key"
-          xcrun stapler staple build/Havbunn.saver
+          xcrun stapler staple build/Havbunn.app
           # Re-zip so the download carries the stapled ticket.
           rm "build/$DIST_NAME.zip"
-          ditto -c -k --keepParent build/Havbunn.saver "build/$DIST_NAME.zip"
+          ditto -c -k --keepParent build/Havbunn.app "build/$DIST_NAME.zip"
 
       - name: Verify release signature
         env:
@@ -108,14 +109,20 @@ jobs:
           check="$RUNNER_TEMP/check"
           rm -rf "$check" && mkdir -p "$check"
           ditto -x -k "build/$DIST_NAME.zip" "$check"
-          bundle="$check/Havbunn.saver"
-          codesign --verify --deep --strict "$bundle"
-          info="$(codesign -dv --verbose=4 "$bundle" 2>&1)"
-          echo "$info" | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
-          echo "$info" | grep -q '^Authority=Developer ID Application' || { echo "::error::Not signed with a Developer ID" >&2; exit 1; }
-          echo "$info" | grep -qx "TeamIdentifier=$APPLE_TEAM_ID" || { echo "::error::Signed by another team" >&2; exit 1; }
-          echo "$info" | grep -q '^Timestamp=' || { echo "::error::No secure timestamp" >&2; exit 1; }
-          xcrun stapler validate "$bundle"
+          app="$check/Havbunn.app"
+          appex="$app/Contents/PlugIns/Havbunn.appex"
+          codesign --verify --deep --strict "$app"
+          for bundle in "$app" "$appex"; do
+            info="$(codesign -dv --verbose=4 "$bundle" 2>&1)"
+            echo "$info" | grep -E '^(Identifier|Authority|TeamIdentifier|Timestamp|Runtime)'
+            echo "$info" | grep -q '^Authority=Developer ID Application' || { echo "::error::$bundle not signed with a Developer ID" >&2; exit 1; }
+            echo "$info" | grep -qx "TeamIdentifier=$APPLE_TEAM_ID" || { echo "::error::$bundle signed by another team" >&2; exit 1; }
+            echo "$info" | grep -q '^Timestamp=' || { echo "::error::$bundle has no secure timestamp" >&2; exit 1; }
+          done
+          # Screen saver extensions run sandboxed, like Apple's own.
+          codesign -d --entitlements - "$appex" 2>/dev/null | grep -q com.apple.security.app-sandbox \
+            || { echo "::error::Extension is not sandboxed" >&2; exit 1; }
+          xcrun stapler validate "$app"
 
       - uses: actions/upload-artifact@v7
         with:

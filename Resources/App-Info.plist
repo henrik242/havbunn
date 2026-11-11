@@ -9,20 +9,26 @@
 	<key>CFBundleExecutable</key>
 	<string>Havbunn</string>
 	<key>CFBundleIdentifier</key>
-	<string>no.havbunn.screensaver</string>
+	<string>no.synth.havbunn</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>Havbunn</string>
 	<key>CFBundlePackageType</key>
-	<string>BNDL</string>
+	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.1.1</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.entertainment</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>27.0</string>
 	<key>NSPrincipalClass</key>
-	<string>HavbunnView</string>
+	<string>NSApplication</string>
 </dict>
 </plist>
