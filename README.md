@@ -57,8 +57,12 @@ Local builds are ad-hoc signed. To sign locally with the same identity:
 ## Known issue
 
 On a non-Retina display next to a Retina main display, macOS's legacy screen saver host
-confines live output to the bottom-left quarter of the non-Retina display. A minimal saver
-using only `draw(_:)` behaves the same way, so this is the host, not Havbunn.
+updates only the bottom-left quarter of the non-Retina display live; the rest refreshes every
+few seconds. The host composites every display at the main display's scale. A minimal saver
+using only `draw(_:)` behaves the same way, and neither redrawing the whole view, a larger
+layer, nor a window of our own (never shown above the saver) gets around it, so this is the
+host, not Havbunn. Workaround: make the non-Retina display the main display in System
+Settings > Displays; both displays then run normally.
 
 ## The scene
 

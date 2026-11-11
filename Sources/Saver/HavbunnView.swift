@@ -9,8 +9,6 @@ private let saverLog = Logger(subsystem: "no.havbunn.screensaver", category: "sa
 
 @objc(HavbunnView)
 public final class HavbunnView: ScreenSaverView {
-    private static let moduleName = "no.havbunn.screensaver"
-    private static let showNamesKey = "showNames"
     private static let languageKey = "captionLanguage"
 
     private var renderer: Renderer?
@@ -46,20 +44,30 @@ public final class HavbunnView: ScreenSaverView {
     private var nilDrawables = 0
     private var skippedForStall = 0
 
-    private static var defaults: UserDefaults {
-        ScreenSaverDefaults(forModuleWithName: moduleName) ?? .standard
+    /// ScreenSaverDefaults accepts writes but drops them on macOS 27, so settings live in a
+    /// plist in the host's sandbox home, shared by the options sheet and the running saver.
+    private static let settingsURL = URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent("Library/Application Support/Havbunn/settings.plist")
+
+    private static func setting(_ key: String) -> Int? {
+        (NSDictionary(contentsOf: settingsURL) as? [String: Any])?[key] as? Int
+    }
+
+    private static func setSetting(_ key: String, _ value: Int) {
+        var all = (NSDictionary(contentsOf: settingsURL) as? [String: Any]) ?? [:]
+        all[key] = value
+        do {
+            try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try (all as NSDictionary).write(to: settingsURL)
+        } catch {
+            saverLog.error("settings not saved: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// 0 off, 1 automatic, 2 Norwegian, 3 English.
     private static var captionLanguage: Int {
-        get {
-            if let v = defaults.object(forKey: languageKey) as? Int { return v }
-            return (defaults.object(forKey: showNamesKey) as? Bool ?? true) ? 1 : 0
-        }
-        set {
-            defaults.set(newValue, forKey: languageKey)
-            defaults.synchronize()
-        }
+        get { setting(languageKey) ?? 1 }
+        set { setSetting(languageKey, newValue) }
     }
 
     private static var englishNames: Bool {
