@@ -45,11 +45,14 @@ private func draw(_ a: Art, seed: UInt64) {
         let c = mix(hex(0x5a3f17), hex(0xa98336), depth * 0.75 + Float(rng.unit()) * 0.25)
         a.taper(pts, rng.range(78, 118), rng.range(18, 34), c)
         a.taper(pts.map { ($0.0 - 7, $0.1) }, 14, 5, hex(0xd7b464), 0.2)
+        // A darker midrib and a translucent pale tip give each strap some blade texture.
+        a.line(pts, mix(c, hex(0x33240e), 0.55), 0.3, 6)
+        a.line([pts[pts.count - 2], pts[pts.count - 1]], hex(0xd7b464), 0.25, rng.range(10, 20))
     }
-    let palm: [XY] = [(crown.0, crown.1 + 6), (crown.0 - 110, crown.1 - 70), (crown.0 - 170, crown.1 - 210),
-                      (crown.0, crown.1 - 280), (crown.0 + 170, crown.1 - 210), (crown.0 + 110, crown.1 - 70)]
-    a.gradient(a.path(palm), [(hex(0x4a3211), 1, 0), (hex(0x7c5f27), 0.9, 0.6), (hex(0x7c5f27), 0, 1)],
-               from: (crown.0, crown.1), to: (crown.0, crown.1 - 280))
+    let palm: [XY] = [(crown.0, crown.1 + 6), (crown.0 - 90, crown.1 - 60), (crown.0 - 140, crown.1 - 190),
+                      (crown.0, crown.1 - 250), (crown.0 + 140, crown.1 - 190), (crown.0 + 90, crown.1 - 60)]
+    a.gradient(a.path(palm), [(hex(0x4a3211), 0.8, 0), (hex(0x7c5f27), 0.6, 0.6), (hex(0x7c5f27), 0, 1)],
+               from: (crown.0, crown.1), to: (crown.0, crown.1 - 250))
     let st: [XY] = [(500, h - 2), (520 + rng.range(-20, 20), h * 0.76), crown]
     a.taper(st, 74, 40, hex(0x4e3b1c))
     a.taper(st.map { ($0.0 - 9, $0.1) }, 30, 14, hex(0x7d6333), 0.8)

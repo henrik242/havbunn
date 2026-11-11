@@ -56,5 +56,15 @@ private func draw(_ a: Art, seed: UInt64) {
     for _ in 0..<70 {
         a.softDot(rng.range(260, 760), rng.range(10, h * 0.85), rng.range(12, 34), hex(0xd4b360), 0.10, sy: 1.4)
     }
+    // Bullate puckering: paired rows of soft dimples flanking the midrib, the sugar-kelp texture.
+    for _ in 0..<70 {
+        let t = rng.unit()
+        let y = h * 0.86 - t * h * 0.85
+        let sp = 500 + sin(t * 5 + 1) * 62 * t
+        let off = rng.range(34, 150) * (0.4 + 0.6 * t)
+        let sidep = rng.chance(0.5) ? 1.0 : -1.0
+        a.softDot(sp + sidep * off, y + 6, rng.range(11, 22), hex(0x3a2a0f), 0.11, sy: 1.7)
+        a.softDot(sp + sidep * off - 4, y - 5, rng.range(6, 13), hex(0xe0bb5c), 0.14, sy: 1.5)
+    }
     a.ctx.restoreGState()
 }
