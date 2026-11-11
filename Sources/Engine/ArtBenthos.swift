@@ -79,6 +79,9 @@ enum BenthosArt {
         }
         a.ctx.restoreGState()
         a.softDot(x + 0.42 * l, y - 0.32 * h, 0.2 * l, p.highlight * shade, 0.5, sy: 0.6)
+        // The pincer gap between the fixed finger and the movable dactyl.
+        a.line([(x + 0.40 * l, y + 0.15 * h), (x + 0.70 * l, y + 0.02 * h), (x + 0.95 * l, y - 0.12 * h)],
+               p.dark * shade, 0.55, max(2, 0.03 * l))
         if p.banded {
             for f in [0.34, 0.6, 0.82] {
                 a.line([(x + f * l, y - 0.50 * h), (x + f * l - 8, y + 0.1 * h)], p.dark, 0.85, 8)
