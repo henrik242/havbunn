@@ -67,6 +67,20 @@ To build the release zip locally with the same identity:
     make dist SIGN_IDENTITY="Developer ID Application: <name> (<team>)" \
         CODESIGN_FLAGS="--options runtime --timestamp"
 
+## Troubleshooting
+
+If picking Havbunn in System Settings reverts to the default aerial (Golden Gate), or the
+Wallpaper pane crashes while you select it, macOS's wallpaper store has wedged its
+screen-saver slot. This is a macOS bug, not a problem with the build: the slot stays bound
+to the old aerial and the selection is never committed. Reset the store and try again:
+
+    # quit System Settings first, then:
+    rm ~/Library/Application\ Support/com.apple.wallpaper/Store/Index.plist
+    killall WallpaperAgent
+
+This resets the desktop wallpaper and screen saver to defaults. Reopen System Settings >
+Wallpaper > Screen Saver and pick Havbunn; it should now stick.
+
 ## Why an app extension
 
 macOS hosts every screen saver remotely and composites it at the main display's scale. A

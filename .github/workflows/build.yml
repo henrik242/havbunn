@@ -4,6 +4,9 @@ on:
   push:
     branches: ["**"]
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    # Docs-only pushes don't need a signed, notarized build. Tag pushes still build:
+    # a tag ref carries no changed-file list, so paths-ignore never filters it out.
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 permissions:
