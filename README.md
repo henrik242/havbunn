@@ -93,6 +93,20 @@ Metal renders each frame into an IOSurface, and an OpenGL backing layer shows it
 display whose scale differs from the main display's, the host keeps up with that at 30 fps
 but not at 60, so Havbunn runs at 30 fps there and 60 elsewhere.
 
+OpenGL is deprecated, but on such a display it is the only drawing path that works, for
+Apple's own savers too. On macOS 27, with a non-Retina display next to a Retina main display:
+
+| Saver | Draws with | Non-Retina display |
+|---|---|---|
+| Flurry, Shell, Arabesque | OpenGL | works |
+| Drift | Metal (`MTKView`) | black |
+| Hello | SceneKit | bottom-left quarter only |
+| Word of the Day, Album Artwork | Core Animation | bottom-left quarter only |
+| Photos (slideshows) | | bottom-left quarter only |
+
+The aerial landscapes, such as Tahoe, work on both, but they run in the wallpaper system,
+not the screen saver host.
+
 The screen saver extension API is private and undocumented, so a macOS update may break
 it. `Sources/Extension/ScreenSaverPrivate.h` declares the classes, as worked out by
 [AppexSaverMinimal](https://github.com/AerialScreensaver/AppexSaverMinimal) (MIT).
